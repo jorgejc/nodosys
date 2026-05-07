@@ -11,28 +11,25 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { databaseConfig } from './config/database.config';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 
 @Module({
   imports: [
     // ConfigModule carga las variables de entorno del archivo .env
     // isGlobal:true → disponible en TODA la aplicación sin importar en cada módulo
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: '.env',
-    }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
 
     // TypeORM conecta con PostgreSQL usando la configuración de database.config.ts
-    TypeOrmModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: databaseConfig,
-    }),
+    TypeOrmModule.forRootAsync({ inject: [ConfigService], useFactory: databaseConfig }),
 
     // ─── Aquí iremos agregando los módulos a medida que los creemos ───
-    // AuthModule,
-    // InventoryModule,
+    AuthModule,
+    InventoryModule,
     // WorkPlanModule,
     // ReportsModule,
-    // UsersModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

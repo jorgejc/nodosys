@@ -26,6 +26,11 @@ export enum UserRole {
   MONITOR = 'monitor',     // Estudiante monitor
   AUXILIAR = 'auxiliar',  // Auxiliar del nodo
   DOCENTE = 'docente',     // Docente ocasional virtual (sin nodo)
+  // Roles académico-administrativos (pueden revisar planes de trabajo)
+  COORDINADOR = 'coordinador',       // Coordinador de programa
+  DECANO = 'decano',                 // Decano de facultad
+  VICERRECTOR_EXTENSION = 'vicerrector_extension', // Jefe de todos los nodos
+  ADMIN = 'admin',                   // Administrador del sistema
 }
 
 @Entity('users') // Indica que esta clase = tabla users en PostgreSQL
@@ -37,6 +42,14 @@ export class User {
   @Column({ name: 'nodo_id', type: 'uuid', nullable: true })
   nodoId: string | null;
 
+  // Facultad a la que pertenece el docente (para revisión del plan de trabajo)
+  @Column({ name: 'faculty', type: 'varchar', length: 200, nullable: true })
+  faculty: string | null;
+
+  // Programa académico (ej: "Tecnología en Sistemas", "Ingeniería de Software")
+  @Column({ name: 'program', type: 'varchar', length: 200, nullable: true })
+  program: string | null;
+
   @Column({ length: 150 })
   name: string;
 
@@ -47,18 +60,14 @@ export class User {
   @Column({ name: 'password_hash', length: 255 })
   passwordHash: string;
 
-  @Column({
-    type: 'enum',
-    enum: UserRole,
-    default: UserRole.DOCENTE,
-  })
+  @Column({ type: 'enum', enum: UserRole, default: UserRole.DOCENTE })
   role: UserRole;
 
-  @Column({ length: 30, nullable: true })
+  @Column({ type: 'varchar', length: 30, nullable: true })
   phone: string | null;
 
   // Cargo o denominación del docente (ej: "Docente Ocasional TC")
-  @Column({ length: 200, nullable: true })
+  @Column({ type: 'varchar', length: 200, nullable: true })
   position: string | null;
 
   // ¿El usuario puede iniciar sesión?
