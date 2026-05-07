@@ -12,6 +12,8 @@ import ProtectedRoute from '@/components/ui/ProtectedRoute';
 import InventoryPage from '@/pages/inventario/InventoryPage';
 import InventoryItemDetailPage from '@/pages/inventario/InventoryItemDetailPage';
 import NewInventoryItemPage from '@/pages/inventario/NewInventoryItemPage';
+import WorkPlanListPage from '@/pages/plan-trabajo/WorkPlanListPage';
+import WorkPlanDetailPage from '@/pages/plan-trabajo/WorkPlanDetailPage';
 
 
 // Por ahora una página temporal de "estamos construyendo"
@@ -29,18 +31,13 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route
-        element={
-          <ProtectedRoute>
-            <AppLayout />
-          </ProtectedRoute>
-        }
-      >
+      <Route element={ <ProtectedRoute> <AppLayout /> </ProtectedRoute> }>
         <Route path="/dashboard"         element={<DashboardPage />} />
         <Route path="/inventario"        element={<InventoryPage />} />
         <Route path="/inventario/nuevo"  element={<NewInventoryItemPage />} />
         <Route path="/inventario/:id"    element={<InventoryItemDetailPage />} />
-        <Route path="/plan-trabajo/*"    element={<ComingSoon name="Plan de Trabajo · Fase 3" />} />
+        <Route path="/plan-trabajo"       element={<WorkPlanListPage />} />
+        <Route path="/plan-trabajo/:id"   element={<WorkPlanDetailPage />} />
         <Route path="/reportes/*"        element={<ComingSoon name="Reportes · Fase 4" />} />
         <Route path="/usuarios/*"        element={<ComingSoon name="Usuarios · Fase 4" />} />
       </Route>

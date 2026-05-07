@@ -14,6 +14,7 @@ import { databaseConfig } from './config/database.config';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { WorkPlanModule } from './modules/workplan/workplan.module';
 
 @Module({
   imports: [
@@ -27,7 +28,7 @@ import { InventoryModule } from './modules/inventory/inventory.module';
     // ─── Aquí iremos agregando los módulos a medida que los creemos ───
     AuthModule,
     InventoryModule,
-    // WorkPlanModule,
+    WorkPlanModule,
     // ReportsModule,
     UsersModule,
   ],
