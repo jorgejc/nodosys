@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Save, Trash2, Loader2 } from 'lucide-react';
 import { inventoryUnitService } from '@/services/inventory.service';
+import { ItemCondition } from '@/types';
 
 interface Unit {
   id: string;
@@ -52,7 +53,7 @@ export default function EditInventoryUnitModal({ unit, itemId, onClose }: Props)
     mutationFn: () => inventoryUnitService.update(unit.id, {
       serialNumber: form.serialNumber || null,
       internalCode: form.internalCode || null,
-      condition: form.condition,
+      condition: form.condition as ItemCondition,
       location: form.location,
       notes: form.notes || null,
       acquisitionDate: form.acquisitionDate || null,
