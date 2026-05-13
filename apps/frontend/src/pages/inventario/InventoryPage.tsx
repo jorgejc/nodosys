@@ -10,11 +10,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import {
-  Package, Search, Plus, AlertTriangle,
-  ArrowUpRight, Loader2, RefreshCw,
-} from 'lucide-react';
+import { Package, Search, Plus, AlertTriangle, ArrowUpRight, Loader2, RefreshCw, Pencil } from 'lucide-react';
 import { inventoryItemService, inventoryCategoryService } from '@/services/inventory.service';
+import EditInventoryItemModal from '@/components/inventory/EditInventoryItemModal';
 import type { InventoryCategory } from '@/types';
 
 // ── Tarjeta de estadística ────────────────────────────────
@@ -51,6 +49,7 @@ export default function InventoryPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
 
   // ── Queries TanStack Query ────────────────────────────────
   const summaryQuery = useQuery({
@@ -292,6 +291,11 @@ export default function InventoryPage() {
 
                       {/* Acción */}
                       <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => setEditingItemId(item.id as string)}
+                            className="p-1.5 text-[#555] hover:text-[#FF6B2B] hover:bg-[#FF6B2B]/10 rounded transition-colors" title="Editar ítem">
+                            <Pencil size={13} />
+                          </button>
                         <button
                           onClick={() => navigate(`/inventario/${item.id}`)}
                           className="flex items-center gap-1 text-xs text-[#555] group-hover:text-[#FF6B2B] transition-colors"
@@ -299,6 +303,7 @@ export default function InventoryPage() {
                           Ver unidades
                           <ArrowUpRight size={12} />
                         </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -308,6 +313,15 @@ export default function InventoryPage() {
           </div>
         )}
       </div>
+
+      {/* Modal de edición */}
+      {editingItemId && (
+        <EditInventoryItemModal
+          itemId={editingItemId}
+          onClose={() => { setEditingItemId(null); itemsQuery.refetch(); }}
+        />
+      )}
+
     </div>
   );
 }
