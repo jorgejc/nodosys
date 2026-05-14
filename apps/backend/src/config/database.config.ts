@@ -29,7 +29,8 @@ export const databaseConfig = (
 
   // ⚠️ synchronize: true SOLO en desarrollo
   // En producción cambiar a false y usar migraciones
-  synchronize: configService.get<string>('NODE_ENV') !== 'production',
+  // synchronize: configService.get<string>('NODE_ENV') !== 'production',
+  synchronize: true,
 
   // Ver en consola las queries SQL (útil para depurar, desactivar en producción)
   logging: configService.get<string>('NODE_ENV') === 'development',
