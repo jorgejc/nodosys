@@ -27,12 +27,28 @@ async function bootstrap() {
     }),
   );
 
-  // CORS: permite que el frontend en localhost:5173 (Vite) se comunique con el backend
+  // ── CORS: permite localhost en desarrollo Y Vercel en producción ──
+  const allowedOrigins = [
+    'http://localhost:5173',   // Vite dev local
+    'http://localhost:3000',   // Alternativa local
+    'http://localhost:4200',   // Por si usas otro puerto
+    process.env.FRONTEND_URL, // URL de producción en Vercel
+  ].filter(Boolean) as string[];
+ 
   app.enableCors({
-    origin: process.env.NODE_ENV === 'production'
-      ? process.env.FRONTEND_URL
-      : 'http://localhost:5173',
+    origin: (origin, callback) => {
+      // Permitir peticiones sin origen (Postman, curl, Swagger)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn(`🚫 CORS bloqueado para origen: ${origin}`);
+        callback(new Error(`Origen no permitido por CORS: ${origin}`));
+      }
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   // Documentación automática Swagger
@@ -51,6 +67,7 @@ async function bootstrap() {
 
   console.log(`\n🚀 NodoSys Backend corriendo en http://localhost:${port}/api`);
   console.log(`📖 Documentación Swagger: http://localhost:${port}/api/docs\n`);
+  console.log(`✅ CORS permitido para: ${allowedOrigins.join(', ')}\n`);
 }
 
 bootstrap();
