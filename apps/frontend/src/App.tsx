@@ -15,6 +15,7 @@ import NewInventoryItemPage from '@/pages/inventario/NewInventoryItemPage';
 import WorkPlanListPage from '@/pages/plan-trabajo/WorkPlanListPage';
 import WorkPlanDetailPage from '@/pages/plan-trabajo/WorkPlanDetailPage';
 import ReportesPage from '@/pages/reportes/ReportesPage';
+import UsersPage from '@/pages/usuarios/UsersPage';
 
 
 // Por ahora una página temporal de "estamos construyendo"
@@ -40,7 +41,7 @@ export default function App() {
         <Route path="/plan-trabajo"       element={<WorkPlanListPage />} />
         <Route path="/plan-trabajo/:id"   element={<WorkPlanDetailPage />} />
         <Route path="/reportes/*"        element={<ReportesPage />} />
-        <Route path="/usuarios/*"        element={<ComingSoon name="Usuarios · Fase 4" />} />
+        <Route path="/usuarios/*"        element={<UsersPage />}/>
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
