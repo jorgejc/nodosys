@@ -10,27 +10,45 @@
  *   - Docente virtual (sin nodo, nodo_id es null)
  */
 import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  BeforeInsert,
-  BeforeUpdate,
+  Entity, PrimaryGeneratedColumn, Column,
+  CreateDateColumn, UpdateDateColumn,
+  BeforeInsert, BeforeUpdate,
 } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 
 // Tipos de rol disponibles en el sistema
 export enum UserRole {
-  ENLACE = 'enlace',       // Coordinador de nodo
-  MONITOR = 'monitor',     // Estudiante monitor
-  AUXILIAR = 'auxiliar',  // Auxiliar del nodo
-  DOCENTE = 'docente',     // Docente ocasional virtual (sin nodo)
-  // Roles académico-administrativos (pueden revisar planes de trabajo)
-  COORDINADOR = 'coordinador',       // Coordinador de programa
-  DECANO = 'decano',                 // Decano de facultad
-  VICERRECTOR_EXTENSION = 'vicerrector_extension', // Jefe de todos los nodos
-  ADMIN = 'admin',                   // Administrador del sistema
+  // Operativos del nodo
+  ENLACE   = 'enlace',    // Docente ocasional que también gestiona un nodo
+  MONITOR  = 'monitor',
+  AUXILIAR = 'auxiliar',
+ 
+  // Docentes
+  DOCENTE  = 'docente',   // Docente ocasional sin nodo asignado
+ 
+  // Vicerrectorías
+  VICERRECTOR_EXTENSION  = 'vicerrector_extension',  // Supervisa todos los nodos
+  VICERRECTOR_ACADEMICO  = 'vicerrector_academico',  // Supervisa planes de trabajo
+  EQUIPO_EXTENSION       = 'equipo_extension',       // Equipo de apoyo del vicerrector extensión
+ 
+  // Facultad
+  DECANO       = 'decano',       // Ve docentes de su facultad
+  COORDINADOR  = 'coordinador',  // Ve docentes de su programa
+ 
+  // Sistema
+  ADMIN = 'admin',
+
+}
+
+export enum DocumentType {
+  CC  = 'CC',   // Cédula de Ciudadanía
+  TI  = 'TI',   // Tarjeta de Identidad
+  RC  = 'RC',   // Registro Civil
+  PA  = 'PA',   // Pasaporte
+  CE  = 'CE',   // Cédula de Extranjería
+  PEP = 'PEP',  // Permiso Especial de Permanencia
+  PPT = 'PPT',  // Permiso de Protección Temporal
+  NIT = 'NIT',  // NIT (instituciones)
 }
 
 @Entity('users') // Indica que esta clase = tabla users en PostgreSQL
@@ -42,6 +60,33 @@ export class User {
   @Column({ name: 'nodo_id', type: 'uuid', nullable: true })
   nodoId: string | null;
 
+  @Column({ name: 'nodo_name', type: 'varchar', length: 200, nullable: true })
+  nodoName: string | null;
+
+  // Documento de identidad
+  @Column({ name: 'document_type', type: 'enum', enum: DocumentType, default: DocumentType.CC, nullable: true })
+  documentType: DocumentType | null;
+
+  @Column({ name: 'document_number', type: 'varchar', length: 30, nullable: true })
+  documentNumber: string | null;
+
+   @Column({ type: 'varchar', length: 20, nullable: true, unique: false })
+  cedula: string | null;
+
+
+  @Column({ type: 'varchar', length: 150 })
+  name: string;
+
+  @Column({ unique: true, type: 'varchar', length: 200 })
+  email: string;
+
+  // La contraseña NUNCA se guarda en texto plano, siempre encriptada con bcrypt
+  @Column({ name: 'password_hash', type: 'varchar', length: 255 })
+  passwordHash: string;
+
+  @Column({ type: 'enum', enum: UserRole, default: UserRole.DOCENTE })
+  role: UserRole;
+
   // Facultad a la que pertenece el docente (para revisión del plan de trabajo)
   @Column({ name: 'faculty', type: 'varchar', length: 200, nullable: true })
   faculty: string | null;
@@ -49,19 +94,6 @@ export class User {
   // Programa académico (ej: "Tecnología en Sistemas", "Ingeniería de Software")
   @Column({ name: 'program', type: 'varchar', length: 200, nullable: true })
   program: string | null;
-
-  @Column({ length: 150 })
-  name: string;
-
-  @Column({ unique: true, length: 200 })
-  email: string;
-
-  // La contraseña NUNCA se guarda en texto plano, siempre encriptada con bcrypt
-  @Column({ name: 'password_hash', length: 255 })
-  passwordHash: string;
-
-  @Column({ type: 'enum', enum: UserRole, default: UserRole.DOCENTE })
-  role: UserRole;
 
   @Column({ type: 'varchar', length: 30, nullable: true })
   phone: string | null;

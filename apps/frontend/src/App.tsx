@@ -16,18 +16,20 @@ import WorkPlanListPage from '@/pages/plan-trabajo/WorkPlanListPage';
 import WorkPlanDetailPage from '@/pages/plan-trabajo/WorkPlanDetailPage';
 import ReportesPage from '@/pages/reportes/ReportesPage';
 import UsersPage from '@/pages/usuarios/UsersPage';
+import ActivitiesPage from '@/pages/actividades/ActivitiesPage';
+import NewActivityPage from '@/pages/actividades/NewActivityPage';
+import ActivityDetailPage from '@/pages/actividades/ActivityDetailPage';
 
-
-// Por ahora una página temporal de "estamos construyendo"
-function ComingSoon({ name }: { name: string }) {
-    return (
-    <div className="flex flex-col items-center justify-center h-64 text-center">
-      <div className="text-4xl mb-4">🚧</div>
-      <h2 className="text-white font-semibold mb-2">{name}</h2>
-      <p className="text-[#666] text-sm">Módulo en desarrollo — próxima fase</p>
-    </div>
-  );
-}
+// // Por ahora una página temporal de "estamos construyendo"
+// function ComingSoon({ name }: { name: string }) {
+//     return (
+//     <div className="flex flex-col items-center justify-center h-64 text-center">
+//       <div className="text-4xl mb-4">🚧</div>
+//       <h2 className="text-white font-semibold mb-2">{name}</h2>
+//       <p className="text-[#666] text-sm">Módulo en desarrollo — próxima fase</p>
+//     </div>
+//   );
+// }
 
 export default function App() {
   return (
@@ -42,6 +44,9 @@ export default function App() {
         <Route path="/plan-trabajo/:id"   element={<WorkPlanDetailPage />} />
         <Route path="/reportes/*"        element={<ReportesPage />} />
         <Route path="/usuarios/*"        element={<UsersPage />}/>
+        <Route path="/actividades"        element={<ActivitiesPage />} />
+        <Route path="/actividades/nueva"  element={<NewActivityPage />} />
+        <Route path="/actividades/:id"    element={<ActivityDetailPage />} />
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

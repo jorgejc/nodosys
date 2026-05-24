@@ -9,50 +9,60 @@
  * con HTTP 400 Bad Request antes de llegar al Service.
  */
 import {
-  IsEmail,
-  IsEnum,
-  IsOptional,
-  IsString,
-  IsUUID,
-  MinLength,
-  MaxLength,
+  IsEmail, IsEnum, IsOptional, IsString,
+  IsUUID, MinLength, MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRole } from '../entities/user.entity';
-
+import { UserRole, DocumentType } from '../entities/user.entity';
+ 
 export class CreateUserDto {
-  @ApiProperty({ example: 'Jorge Andrés Pérez', description: 'Nombre completo' })
-  @IsString({ message: 'El nombre debe ser texto' })
-  @MaxLength(150)
+  @ApiProperty()
+  @IsString() @MaxLength(150)
   name: string;
-
-  @ApiProperty({ example: 'jorge.perez@iudigital.edu.co' })
-  @IsEmail({}, { message: 'El email no tiene un formato válido' })
+ 
+  @ApiPropertyOptional({ enum: DocumentType, default: 'CC' })
+  @IsEnum(DocumentType) @IsOptional()
+  documentType?: DocumentType;
+ 
+  @ApiPropertyOptional({ example: '1234567890' })
+  @IsString() @IsOptional()
+  documentNumber?: string;
+ 
+  @ApiProperty()
+  @IsEmail({}, { message: 'Email inválido' })
   email: string;
-
-  @ApiProperty({ example: 'MiContraseña123', minLength: 8 })
-  @IsString()
-  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
+ 
+  @ApiProperty({ minLength: 8 })
+  @IsString() @MinLength(8)
   password: string;
-
+ 
   @ApiPropertyOptional({ enum: UserRole, default: UserRole.DOCENTE })
-  @IsEnum(UserRole, { message: 'El rol no es válido' })
-  @IsOptional()
+  @IsEnum(UserRole) @IsOptional()
   role?: UserRole;
-
-  // UUID del nodo — opcional para docentes virtuales
-  @ApiPropertyOptional({ example: '00000000-0000-0000-0000-000000000001' })
-  @IsUUID('4', { message: 'El nodoId debe ser un UUID válido' })
-  @IsOptional()
+ 
+  @ApiPropertyOptional()
+  @IsUUID() @IsOptional()
   nodoId?: string;
-
-  @ApiPropertyOptional({ example: '3001234567' })
-  @IsString()
-  @IsOptional()
+ 
+  @ApiPropertyOptional()
+  @IsString() @IsOptional()
+  faculty?: string;
+ 
+  @ApiPropertyOptional()
+  @IsString() @IsOptional()
+  program?: string;
+ 
+  @ApiPropertyOptional()
+  @IsString() @IsOptional()
   phone?: string;
-
-  @ApiPropertyOptional({ example: 'Docente Ocasional TC' })
-  @IsString()
-  @IsOptional()
+ 
+  @ApiPropertyOptional()
+  @IsString() @IsOptional()
   position?: string;
+ 
+  // Campo legacy
+  @ApiPropertyOptional()
+  @IsString() @IsOptional()
+  cedula?: string;
 }
+ 

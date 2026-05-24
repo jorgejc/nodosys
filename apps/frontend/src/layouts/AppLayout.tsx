@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ClipboardList, FileText,
-  Users, LogOut, Menu, X, ChevronRight,
+  Users, LogOut, Menu, X, ChevronRight, Zap,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useAuth } from '@/hooks/useAuth';
@@ -38,6 +38,7 @@ export default function AppLayout() {
     { to: '/plan-trabajo', icon: ClipboardList, label: 'Plan de Trabajo', sub: 'Actividades y horas', show: canViewOwnPlan || canViewAllPlans },
     { to: '/reportes', icon: FileText, label: 'Reportes', sub: 'PDF y Excel', show: canViewReports },
     { to: '/usuarios', icon: Users, label: 'Usuarios', sub: 'Gestión de accesos', show: canManageUsers },
+    { to: '/actividades', icon: Zap, label: 'Actividades', sub: 'Viáticos y solicitudes', show: true },
   ].filter(n => n.show);
 
   return (

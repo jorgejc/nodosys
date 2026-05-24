@@ -15,6 +15,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { WorkPlanModule } from './modules/workplan/workplan.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { ActivitiesModule } from './modules/activities/activities.module';
 
 @Module({
   imports: [
@@ -29,8 +31,9 @@ import { WorkPlanModule } from './modules/workplan/workplan.module';
     AuthModule,
     InventoryModule,
     WorkPlanModule,
-    // ReportsModule,
+    ReportsModule,
     UsersModule,
+    ActivitiesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

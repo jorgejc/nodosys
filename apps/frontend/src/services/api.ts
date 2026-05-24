@@ -14,8 +14,8 @@ import { useAuthStore } from '@/stores/auth.store';
 
 // URL base: en desarrollo usa el proxy de Vite (/api → localhost:3001/api)
 const api = axios.create({
-  // baseURL: '/api',
-  baseURL: import.meta.env.VITE_API_URL ?? '/api',
+  baseURL: '/api',
+  // baseURL: import.meta.env.VITE_API_URL ?? '/api',
   headers: {
     'Content-Type': 'application/json',
   },

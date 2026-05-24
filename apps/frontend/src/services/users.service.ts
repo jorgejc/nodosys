@@ -2,8 +2,14 @@ import api from './api';
 import type { User } from '@/types';
 
 export const usersService = {
-  getAll: (params?: { nodoId?: string; role?: string; faculty?: string; program?: string }) =>
-    api.get<User[]>('/users', { params }).then((r) => r.data),
+  getAll: (params?: {
+  search?:  string;   // ← nuevo: busca por nombre, documento, email
+  nodoId?:  string;
+  role?:    string;
+  faculty?: string;
+  program?: string;
+}) =>
+  api.get<User[]>('/users', { params }).then(r => r.data),
 
   getById: (id: string) =>
     api.get<User>(`/users/${id}`).then((r) => r.data),

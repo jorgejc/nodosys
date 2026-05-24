@@ -1,6 +1,16 @@
 /**
- * UsersPage.tsx — corregido
- * Fixes: import Info, tipo User correcto (sin cedula), search en service
+ * UsersPage.tsx — Gestión de usuarios del sistema
+ *
+ * Quién puede ver esto:
+ *  - admin: ve y gestiona TODOS los usuarios
+ *  - enlace: puede crear monitoras y auxiliares de su nodo
+ *  - decano/vicerrector: solo lectura (ver quién hay)
+ *
+ * Funcionalidades:
+ *  - Listar usuarios con filtros por rol, facultad, programa
+ *  - Crear nuevo usuario con rol asignado
+ *  - Editar datos y rol
+ *  - Activar/desactivar acceso
  */
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -8,24 +18,24 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
-  Users, Plus, Search, X, Save, Loader2, Shield,
-  Eye, EyeOff, CheckCircle2, XCircle, Pencil, Info, Filter,
+  Users, Plus, Search, X, Save, Loader2,
+  Shield, Eye, EyeOff, CheckCircle2, XCircle,
+  Pencil, Filter,
 } from 'lucide-react';
 import { usersService } from '@/services/users.service';
 import { useAuth } from '@/hooks/useAuth';
 import { usePagination } from '@/components/ui/Pagination';
-import type { User } from '@/types';
+import type { User, UserRole } from '@/types';
 
-// ── Tipos de documento colombianos ────────────────────────
 const DOCUMENT_TYPES = [
-  { value: 'CC',  desc: 'CC  — Cédula de Ciudadanía' },
-  { value: 'TI',  desc: 'TI  — Tarjeta de Identidad' },
-  { value: 'RC',  desc: 'RC  — Registro Civil' },
-  { value: 'PA',  desc: 'PA  — Pasaporte' },
-  { value: 'CE',  desc: 'CE  — Cédula de Extranjería' },
-  { value: 'PEP', desc: 'PEP — Permiso Especial de Permanencia' },
-  { value: 'PPT', desc: 'PPT — Permiso de Protección Temporal' },
-  { value: 'NIT', desc: 'NIT — NIT (instituciones)' },
+  { value: 'CC',  label: 'CC  — Cédula de Ciudadanía' },
+  { value: 'TI',  label: 'TI  — Tarjeta de Identidad' },
+  { value: 'RC',  label: 'RC  — Registro Civil' },
+  { value: 'PA',  label: 'PA  — Pasaporte' },
+  { value: 'CE',  label: 'CE  — Cédula de Extranjería' },
+  { value: 'PEP', label: 'PEP — Permiso Especial de Permanencia' },
+  { value: 'PPT', label: 'PPT — Permiso de Protección Temporal' },
+  { value: 'NIT', label: 'NIT — NIT (instituciones)' },
 ];
 
 // ── Configuración de roles ────────────────────────────────
@@ -33,29 +43,30 @@ const ROLE_CFG: Record<string, {
   label: string; color: string; description: string;
   reqFaculty: boolean; reqProgram: boolean;
 }> = {
-  admin:                 { label:'Administrador',         color:'text-red-400 bg-red-400/10 border-red-400/30',           description:'Acceso total al sistema',               reqFaculty:false, reqProgram:false },
-  vicerrector_extension: { label:'Vicerrector Extensión', color:'text-purple-400 bg-purple-400/10 border-purple-400/30',  description:'Supervisa todos los nodos',             reqFaculty:false, reqProgram:false },
-  vicerrector_academico: { label:'Vicerrector Académico', color:'text-violet-400 bg-violet-400/10 border-violet-400/30',  description:'Supervisa planes de trabajo',           reqFaculty:false, reqProgram:false },
-  equipo_extension:      { label:'Equipo Extensión',      color:'text-indigo-400 bg-indigo-400/10 border-indigo-400/30',  description:'Apoyo al vicerrector extensión',        reqFaculty:false, reqProgram:false },
-  decano:                { label:'Decano',                color:'text-blue-400 bg-blue-400/10 border-blue-400/30',        description:'Ve su facultad y programas',            reqFaculty:true,  reqProgram:false },
-  coordinador:           { label:'Coordinador',           color:'text-cyan-400 bg-cyan-400/10 border-cyan-400/30',        description:'Ve su programa específico',            reqFaculty:true,  reqProgram:true  },
-  enlace:                { label:'Enlace de Nodo',        color:'text-[#FF6B2B] bg-[#FF6B2B]/10 border-[#FF6B2B]/30',    description:'Docente gestor de nodo',               reqFaculty:false, reqProgram:false },
-  docente:               { label:'Docente Ocasional',     color:'text-green-400 bg-green-400/10 border-green-400/30',     description:'Solo su plan de trabajo',              reqFaculty:false, reqProgram:false },
-  monitor:               { label:'Monitor',               color:'text-yellow-400 bg-yellow-400/10 border-yellow-400/30', description:'Apoya inventario del nodo',            reqFaculty:false, reqProgram:false },
-  auxiliar:              { label:'Auxiliar',              color:'text-[#888] bg-[#1A1A1A] border-[#333]',                description:'Apoyo operativo del nodo',             reqFaculty:false, reqProgram:false },
+  admin:                 { label: 'Administrador',         color: 'text-red-400 bg-red-400/10 border-red-400/30',          description: 'Acceso total',                       reqFaculty: false, reqProgram: false },
+  vicerrector_extension: { label: 'Vicerrector Extensión', color: 'text-purple-400 bg-purple-400/10 border-purple-400/30', description: 'Supervisa todos los nodos',           reqFaculty: false, reqProgram: false },
+  vicerrector_academico: { label: 'Vicerrector Académico', color: 'text-violet-400 bg-violet-400/10 border-violet-400/30', description: 'Supervisa planes de trabajo',         reqFaculty: false, reqProgram: false },
+  equipo_extension:      { label: 'Equipo Extensión',      color: 'text-indigo-400 bg-indigo-400/10 border-indigo-400/30', description: 'Apoyo vicerrector extensión',         reqFaculty: false, reqProgram: false },
+  decano:                { label: 'Decano',                color: 'text-blue-400 bg-blue-400/10 border-blue-400/30',       description: 'Ve todos los programas de su facultad', reqFaculty: true,  reqProgram: false },
+  coordinador:           { label: 'Coordinador',           color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30',       description: 'Ve un programa específico',           reqFaculty: true,  reqProgram: true  },
+  enlace:                { label: 'Enlace de Nodo',        color: 'text-[#FF6B2B] bg-[#FF6B2B]/10 border-[#FF6B2B]/30',   description: 'Docente ocasional gestor de nodo',   reqFaculty: false, reqProgram: false },
+  docente:               { label: 'Docente Ocasional',     color: 'text-green-400 bg-green-400/10 border-green-400/30',    description: 'Solo su plan de trabajo',            reqFaculty: false, reqProgram: false },
+  monitor:               { label: 'Monitor',               color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30', description: 'Apoya el inventario del nodo',       reqFaculty: false, reqProgram: false },
+  auxiliar:              { label: 'Auxiliar',              color: 'text-[#888] bg-[#1A1A1A] border-[#333]',               description: 'Apoyo operativo',                    reqFaculty: false, reqProgram: false },
 };
-
+ 
 // Qué roles puede asignar cada perfil
 const ASSIGNABLE: Record<string, string[]> = {
   admin:  Object.keys(ROLE_CFG),
   enlace: ['monitor','auxiliar'],
 };
 
+
 const inp = "w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#555] outline-none focus:border-[#FF6B2B] transition-colors";
 const inpErr = "w-full bg-[#1A1A1A] border border-red-500/50 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#555] outline-none transition-colors";
 const lbl = "text-xs text-[#666] uppercase tracking-wider block mb-1.5";
 
-// ── Validación con reglas condicionales por rol ───────────
+/// ── Validación con reglas condicionales por rol ───────────
 const schema = z.object({
   name:           z.string().min(3,'Nombre obligatorio (mínimo 3 caracteres)'),
   documentType:   z.string().default('CC'),
@@ -93,7 +104,7 @@ function friendlyBackendError(msg: string | string[]): string {
   }
   return raw || 'Ocurrió un error. Por favor intenta de nuevo.';
 }
-
+ 
 function RoleBadge({ role }: { role: string }) {
   const cfg = ROLE_CFG[role];
   if (!cfg) return <span className="text-xs text-[#555]">{role}</span>;
@@ -118,9 +129,9 @@ function UserModal({
   const isEdit = !!user?.id;
   const [showPass, setShowPass] = useState(false);
   const [serverError, setServerError] = useState('');
-
+ 
   const assignable = ASSIGNABLE[myRole ?? ''] ?? (isAdmin ? Object.keys(ROLE_CFG) : []);
-
+ 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<FD>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -136,7 +147,7 @@ function UserModal({
       position:       user?.position       ?? '',
     },
   });
-
+ 
   const selectedRole = watch('role');
   const selectedDocType = watch('documentType');
   const cfg = ROLE_CFG[selectedRole];
@@ -160,7 +171,7 @@ function UserModal({
       if (cfg?.reqProgram || ['decano','coordinador','docente'].includes(selectedRole)) {
         if (data.program) payload.program = data.program;
       }
-
+ 
       if (isEdit && user?.id) return usersService.update(user.id, payload);
       return usersService.register(payload);
     },
@@ -171,14 +182,15 @@ function UserModal({
       setServerError(friendlyBackendError(msg));
     },
   });
-
+ 
   const hint = cfg?.reqFaculty && cfg?.reqProgram
     ? '⚠️ Este rol requiere asociar una facultad y un programa.'
     : cfg?.reqFaculty
       ? '⚠️ Este rol requiere asociar una facultad.'
       : null;
 
-  return (
+
+ return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-[#111] border border-[#2A2A2A] rounded-2xl w-full max-w-lg max-h-[92vh] flex flex-col shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#1E1E1E] flex-shrink-0">
@@ -188,9 +200,9 @@ function UserModal({
           </div>
           <button onClick={onClose} className="text-[#555] hover:text-white p-1"><X size={18}/></button>
         </div>
-
+ 
         <form onSubmit={handleSubmit(d => mutation.mutate(d))} className="flex-1 overflow-y-auto p-6 space-y-4">
-
+ 
           {/* Error del servidor — mensaje amigable */}
           {serverError && (
             <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
@@ -198,7 +210,7 @@ function UserModal({
               <p className="text-red-400 text-sm">{serverError}</p>
             </div>
           )}
-
+ 
           {/* Nombre */}
           <div>
             <label className={lbl}>Nombre completo *</label>
@@ -210,7 +222,7 @@ function UserModal({
               </p>
             )}
           </div>
-
+ 
           {/* Documento */}
           <div>
             <label className={lbl}>Documento de identidad</label>
@@ -225,7 +237,7 @@ function UserModal({
               {DOCUMENT_TYPES.find(d => d.value === selectedDocType)?.desc}
             </p>
           </div>
-
+ 
           {/* Email */}
           <div>
             <label className={lbl}>Correo institucional *</label>
@@ -238,7 +250,7 @@ function UserModal({
               </p>
             )}
           </div>
-
+ 
           {/* Contraseña */}
           <div>
             <label className={lbl}>
@@ -259,7 +271,7 @@ function UserModal({
               </p>
             )}
           </div>
-
+ 
           {/* Rol */}
           <div>
             <label className={lbl}>Rol en el sistema *</label>
@@ -277,7 +289,7 @@ function UserModal({
               </p>
             )}
           </div>
-
+ 
           {/* Aviso contextual del rol */}
           {hint && (
             <div className="flex items-start gap-2 bg-yellow-400/8 border border-yellow-400/20 rounded-lg px-4 py-2.5">
@@ -285,7 +297,7 @@ function UserModal({
               <p className="text-yellow-400 text-xs">{hint}</p>
             </div>
           )}
-
+ 
           {/* Facultad — obligatoria para decano/coordinador */}
           {(cfg?.reqFaculty || cfg?.reqProgram || isAdmin) && (
             <div>
@@ -303,7 +315,7 @@ function UserModal({
               )}
             </div>
           )}
-
+ 
           {/* Programa — obligatorio para coordinador */}
           {(cfg?.reqProgram || ['decano','coordinador','docente'].includes(selectedRole)) && (
             <div>
@@ -321,7 +333,7 @@ function UserModal({
               )}
             </div>
           )}
-
+ 
           {/* Teléfono y cargo */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -333,7 +345,7 @@ function UserModal({
               <input {...register('position')} placeholder="Docente Ocasional TC" className={inp}/>
             </div>
           </div>
-
+ 
           <div className="flex justify-end gap-3 pt-2 border-t border-[#1E1E1E]">
             <button type="button" onClick={onClose}
               className="text-sm text-[#666] hover:text-white transition-colors px-4">
@@ -350,7 +362,7 @@ function UserModal({
     </div>
   );
 }
-
+ 
 // ── Página principal ──────────────────────────────────────
 export default function UsersPage() {
   const { canManageUsers, canCreateUsers, isAdmin, role } = useAuth();
@@ -359,7 +371,7 @@ export default function UsersPage() {
   const [roleF, setRoleF] = useState('');
   const [facF, setFacF] = useState('');
   const [modal, setModal] = useState<(FD & { id?: string }) | null | false>(false);
-
+ 
   const q = useQuery({
     queryKey: ['users', search, roleF, facF],
     queryFn: () => usersService.getAll({
@@ -369,21 +381,21 @@ export default function UsersPage() {
     }),
     staleTime: 30_000,
   });
-
+ 
   const users = (q.data ?? []) as User[];
   const faculties = [...new Set(users.map(u => u.faculty).filter(Boolean) as string[])].sort();
   const programs  = [...new Set(users.map(u => u.program).filter(Boolean) as string[])].sort();
-
+ 
   const toggleActive = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       active ? usersService.activate(id) : usersService.deactivate(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
-
+ 
   const { paginated, PaginationUI } = usePagination(users, 10);
   const assignable = ASSIGNABLE[role ?? ''] ?? (isAdmin ? Object.keys(ROLE_CFG) : []);
   const hasFilters = !!(search || roleF || facF);
-
+ 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -399,7 +411,7 @@ export default function UsersPage() {
           </button>
         )}
       </div>
-
+ 
       {/* Filtros */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
@@ -426,14 +438,14 @@ export default function UsersPage() {
           </button>
         )}
       </div>
-
+ 
       {/* Tabla */}
       <div className="bg-[#111] border border-[#2A2A2A] rounded-xl overflow-hidden">
         <div className="border-b border-[#1E1E1E] px-5 py-3 flex justify-between">
           <span className="text-xs font-mono text-[#555] uppercase tracking-widest">// USUARIOS</span>
           <span className="text-xs text-[#555]">{users.length} resultado{users.length !== 1 ? 's' : ''}</span>
         </div>
-
+ 
         {q.isLoading ? (
           <div className="flex justify-center py-16"><Loader2 size={24} className="animate-spin text-[#FF6B2B]"/></div>
         ) : paginated.length === 0 ? (
@@ -536,7 +548,7 @@ export default function UsersPage() {
           </>
         )}
       </div>
-
+ 
       {modal !== false && (
         <UserModal
           user={modal}

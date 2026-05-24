@@ -4,18 +4,37 @@
  * TypeScript nos da "tipos" para evitar errores en tiempo de desarrollo.
  * Si intentas usar user.emaill (doble l), TypeScript te avisa ANTES
  * de que llegue al navegador. Muy útil.
+ * 
+ * Cuando se agregue un rol nuevo en el backend, se debe añadir acá también
  */
 
-// ─── Usuario ──────────────────────────────────────────────
-export type UserRole = 
-| 'enlace' | 'monitor' | 'auxiliar' | 'docente'
-| 'coordinador' | 'decano' | 'vicerrector_extension' | 'admin';
+// ── Roles del sistema ─────────────────────────────────────
+export type UserRole =
+  | 'admin'
+  | 'vicerrector_extension'
+  | 'vicerrector_academico'    // ← NUEVO
+  | 'equipo_extension'         // ← NUEVO
+  | 'decano'
+  | 'coordinador'
+  | 'enlace'
+  | 'docente'
+  | 'monitor'
+  | 'auxiliar';
+ 
+// ── Tipos de documento colombianos ────────────────────────
+export type DocumentType =
+  | 'CC' | 'TI' | 'RC' | 'PA'
+  | 'CE' | 'PEP' | 'PPT' | 'NIT';
+
 
 export interface User {
   id: string;
   nodoId: string | null;
-  faculty: string | null;
-  program: string | null;
+  faculty?: string | null;
+  program?: string | null;
+  documentType?: DocumentType | null;
+  documentNumber?: string | null;
+  cedula?: string | null;
   name: string;
   email: string;
   role: UserRole;
