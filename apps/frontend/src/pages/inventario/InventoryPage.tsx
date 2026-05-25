@@ -14,6 +14,7 @@ import { Package, Search, Plus, AlertTriangle, ArrowUpRight, Loader2, RefreshCw,
 import { inventoryItemService, inventoryCategoryService } from '@/services/inventory.service';
 import EditInventoryItemModal from '@/components/inventory/EditInventoryItemModal';
 import type { InventoryCategory } from '@/types';
+import { usePagination } from '@/components/ui/Pagination';
 
 // ── Tarjeta de estadística ────────────────────────────────
 function StatCard({
@@ -72,6 +73,10 @@ export default function InventoryPage() {
   });
 
   const summary = summaryQuery.data;
+
+  const items = (itemsQuery.data ?? []) as any[]; 
+  const { paginated, PaginationUI } = usePagination(items, 10);
+  
 
   return (
     <div className="space-y-6">
@@ -227,7 +232,7 @@ export default function InventoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {itemsQuery.data?.map((item) => {
+                {paginated.map((item: any) => {
                   const damaged =
                     (item as unknown as Record<string, number>).damagedUnits ?? 0;
                   const total =
@@ -312,6 +317,10 @@ export default function InventoryPage() {
             </table>
           </div>
         )}
+
+        <div className="p-4 border-t border-[#1E1E1E] flex justify-end">
+          <PaginationUI />
+        </div>
       </div>
 
       {/* Modal de edición */}
