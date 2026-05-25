@@ -14,6 +14,8 @@ const schema = z.object({
   description: z.string().optional(),
   trackByUnit: z.boolean().default(true),
   notes:       z.string().optional(),
+  referenceUrl: z.string().url('Introduce una URL válida').optional().or(z.literal('')),
+  howToUse:     z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -124,6 +126,39 @@ export default function NewInventoryItemPage() {
             rows={3}
             placeholder="Uso previsto, características técnicas relevantes..."
             className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-[#555] outline-none focus:border-[#FF6B2B] resize-none"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">
+            URL de referencia
+            <span className="text-[#444] normal-case ml-1">(YouTube, manual, etc. — opcional)</span>
+          </label>
+          <div className="relative">
+            <input
+              {...register('referenceUrl')}
+              type="url"
+              placeholder="https://youtube.com/watch?v=..."
+              className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#555] outline-none focus:border-[#FF6B2B]"
+            />
+          </div>
+          {errors.referenceUrl && <p className="text-red-400 text-xs mt-1">{errors.referenceUrl.message}</p>}
+          <p className="text-xs text-[#444] mt-1">
+            Para juegos didácticos: pega aquí el link de un video explicando cómo se juega.
+          </p>
+        </div>
+
+        {/* Instrucciones de uso */}
+        <div>
+          <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">
+            Instrucciones de uso
+            <span className="text-[#444] normal-case ml-1">(cómo se juega, cómo se usa — opcional)</span>
+          </label>
+          <textarea
+            {...register('howToUse')}
+            rows={3}
+            placeholder="Ej: Este juego se juega en equipos de 3. Primero se reparten las cartas..."
+            className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#555] outline-none focus:border-[#FF6B2B] resize-none"
           />
         </div>
 

@@ -9,8 +9,9 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Package, Loader2, X } from 'lucide-react';
+import { ArrowLeft, Plus, Package, Loader2, X, Pencil } from 'lucide-react';
 import { inventoryItemService, inventoryUnitService } from '@/services/inventory.service';
+import EditInventoryUnitModal from '@/components/inventory/EditInventoryUnitModal';
 
 // ── Badge de estado ───────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
@@ -50,6 +51,7 @@ function AddUnitModal({
   itemId, onClose, onSuccess,
 }: { itemId: string; onClose: () => void; onSuccess: () => void }) {
   const [mode, setMode] = useState<'serial' | 'bulk'>('serial');
+  
   const [form, setForm] = useState({
     serialNumber: '', internalCode: '', condition: 'bueno',
     location: 'Nodo', acquisitionDate: '', quantity: 1,
@@ -220,6 +222,7 @@ export default function InventoryItemDetailPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [showAddUnit, setShowAddUnit] = useState(false);
+  const [editingUnit, setEditingUnit] = useState<any | null>(null);
 
   const itemQuery = useQuery({
     queryKey: ['inventory-item', id],
@@ -326,7 +329,7 @@ export default function InventoryItemDetailPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#1E1E1E]">
-                  {['Serial / Código', 'Condición', 'Estado', 'Ubicación', 'Ingreso'].map((h) => (
+                  {['Serial / Código', 'Condición', 'Estado', 'Ubicación', 'Ingreso', ''].map((h) => (
                     <th key={h} className="text-left text-xs font-mono text-[#555] uppercase tracking-wider px-5 py-3 whitespace-nowrap">
                       {h}
                     </th>
@@ -358,6 +361,15 @@ export default function InventoryItemDetailPage() {
                         ? new Date(unit.acquisitionDate).toLocaleDateString('es-CO')
                         : '—'}
                     </td>
+                    <td className="px-5 py-3.5">
+                      <button
+                        onClick={() => setEditingUnit(unit)}
+                        className="p-1.5 text-[#555] hover:text-[#FF6B2B] hover:bg-[#FF6B2B]/10 rounded transition-colors"
+                        title="Editar esta unidad"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -371,6 +383,18 @@ export default function InventoryItemDetailPage() {
           itemId={id!}
           onClose={() => setShowAddUnit(false)}
           onSuccess={() => qc.invalidateQueries({ queryKey: ['inventory-item', id] })}
+        />
+      )}
+
+      {editingUnit && (
+        <EditInventoryUnitModal
+          unit={editingUnit}
+          itemId={item.id}
+          // itemName={item.name}
+          onClose={() => {
+            setEditingUnit(null);
+            qc.invalidateQueries({ queryKey: ['inventory-item', id] }); // Esto refresca la tabla al cerrar
+          }}
         />
       )}
     </div>

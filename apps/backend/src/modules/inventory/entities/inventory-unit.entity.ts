@@ -69,7 +69,7 @@ export class InventoryUnit {
   status: UnitStatus;
 
   // Dónde está físicamente: "Sala de Cómputo", "Bodega", "Sala Robótica"
-  @Column({ type: 'varchar', length: 200, default: 'Nodo' })
+  @Column({ type: 'varchar', length: 200, default: 'Sin ubicar' })
   location: string;
 
   // Fecha en que llegó al nodo

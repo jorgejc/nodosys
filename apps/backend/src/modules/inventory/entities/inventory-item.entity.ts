@@ -56,6 +56,12 @@ export class InventoryItem {
   @Column({ name: 'image_url', type: 'text', nullable: true })
   imageUrl: string | null;
 
+  @Column({ name: 'reference_url', type: 'text', nullable: true })
+  referenceUrl: string | null;
+
+  @Column({ name: 'how_to_use', type: 'text', nullable: true })
+  howToUse: string | null;
+
   // ¿Se lleva control individual por unidad o solo cantidad total?
   // true  → equipos con serial (computadores, tablets, fuentes)
   // false → ítems genéricos sin serial (sillas, mesas, cuadernos)
