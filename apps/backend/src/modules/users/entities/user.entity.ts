@@ -64,7 +64,7 @@ export class User {
   nodoName: string | null;
 
   // Documento de identidad
-  @Column({ name: 'document_type', type: 'enum', enum: DocumentType, default: DocumentType.CC, nullable: true })
+  @Column({ name: 'document_type', type: 'enum', enumName: 'document_type', default: DocumentType.CC, nullable: true })
   documentType: DocumentType | null;
 
   @Column({ name: 'document_number', type: 'varchar', length: 30, nullable: true })
@@ -84,7 +84,7 @@ export class User {
   @Column({ name: 'password_hash', type: 'varchar', length: 255 })
   passwordHash: string;
 
-  @Column({ type: 'enum', enum: UserRole, default: UserRole.DOCENTE })
+  @Column({ type: 'enum', enum: UserRole, enumName: 'users_role_enum', default: UserRole.DOCENTE })
   role: UserRole;
 
   // Facultad a la que pertenece el docente (para revisión del plan de trabajo)
