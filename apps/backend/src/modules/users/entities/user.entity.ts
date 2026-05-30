@@ -64,15 +64,11 @@ export class User {
   nodoName: string | null;
 
   // Documento de identidad
-  @Column({ name: 'document_type', type: 'enum', enumName: 'document_type', default: DocumentType.CC, nullable: true })
-  documentType: DocumentType | null;
+  @Column({ name: 'document_type', type: 'varchar', default: DocumentType.CC, nullable: true })
+  documentType: string | null;
 
   @Column({ name: 'document_number', type: 'varchar', length: 30, nullable: true })
   documentNumber: string | null;
-
-   @Column({ type: 'varchar', length: 20, nullable: true, unique: false })
-  cedula: string | null;
-
 
   @Column({ type: 'varchar', length: 150 })
   name: string;
@@ -84,6 +80,9 @@ export class User {
   @Column({ name: 'password_hash', type: 'varchar', length: 255 })
   passwordHash: string;
 
+
+  // enumName le dice a TypeORM que use el enum existente en la BD
+  // en lugar de intentar crear/modificar uno nuevo
   @Column({ type: 'enum', enum: UserRole, enumName: 'users_role_enum', default: UserRole.DOCENTE })
   role: UserRole;
 
