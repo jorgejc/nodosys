@@ -47,9 +47,10 @@ export class UsersService {
   ): Promise<User[]> {
     const qb = this.repo.createQueryBuilder('u')
       .select([
-        'u.id', 'u.name', 'u.email', 'u.cedula', 'u.role',
-        'u.faculty', 'u.program', 'u.nodoId', 'u.nodoName',
-        'u.phone', 'u.position', 'u.isActive', 'u.createdAt',
+      'u.id', 'u.name', 'u.email', 'u.role',
+      'u.documentType', 'u.documentNumber',
+      'u.faculty', 'u.program', 'u.nodoId', 'u.nodoName',
+      'u.phone', 'u.position', 'u.isActive', 'u.createdAt',
       ])
       .orderBy('u.name', 'ASC');
  
