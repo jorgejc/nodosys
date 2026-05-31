@@ -15,10 +15,11 @@ import {
   ArrowLeft, Send, Check, X, Plus, Trash2,
   Loader2, ExternalLink, Users, Image,
   FileText, DollarSign, CheckCircle2, Clock,
-  XCircle, PlayCircle, AlertTriangle,
+  XCircle, PlayCircle, AlertTriangle, LucideIcon,
 } from 'lucide-react';
 import { activitiesService } from '@/services/activities.service';
 import { useAuth } from '@/hooks/useAuth';
+
 
 // ── Tipos ─────────────────────────────────────────────────
 interface ActivityDetail {
@@ -60,7 +61,7 @@ interface EvidenceItem {
 }
 
 // ── Helpers visuales ──────────────────────────────────────
-const STATUS_CFG: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ComponentType<{size:number}> }> = {
+const STATUS_CFG: Record<string, { label: string; color: string; bg: string; border: string; icon: LucideIcon; }> = {
   borrador:     { label: 'Borrador',     color: 'text-[#666]',     bg: 'bg-[#1A1A1A]',     border: 'border-[#333]',        icon: FileText },
   pendiente:    { label: 'Pendiente',    color: 'text-yellow-400', bg: 'bg-yellow-400/10', border: 'border-yellow-400/30', icon: Clock },
   aprobada:     { label: 'Aprobada',     color: 'text-green-400',  bg: 'bg-green-400/10',  border: 'border-green-400/30',  icon: CheckCircle2 },
