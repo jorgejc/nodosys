@@ -18,14 +18,14 @@ import type { User } from '@/types';
 
 // ── Tipos de documento colombianos ────────────────────────
 const DOCUMENT_TYPES = [
-  { value: 'CC',  desc: 'CC  — Cédula de Ciudadanía' },
-  { value: 'TI',  desc: 'TI  — Tarjeta de Identidad' },
-  { value: 'RC',  desc: 'RC  — Registro Civil' },
-  { value: 'PA',  desc: 'PA  — Pasaporte' },
-  { value: 'CE',  desc: 'CE  — Cédula de Extranjería' },
-  { value: 'PEP', desc: 'PEP — Permiso Especial de Permanencia' },
-  { value: 'PPT', desc: 'PPT — Permiso de Protección Temporal' },
-  { value: 'NIT', desc: 'NIT — NIT (instituciones)' },
+  { value: 'CC',  label: 'CC  — Cédula de Ciudadanía' },
+  { value: 'TI',  label: 'TI  — Tarjeta de Identidad' },
+  { value: 'RC',  label: 'RC  — Registro Civil' },
+  { value: 'PA',  label: 'PA  — Pasaporte' },
+  { value: 'CE',  label: 'CE  — Cédula de Extranjería' },
+  { value: 'PEP', label: 'PEP — Permiso Especial de Permanencia' },
+  { value: 'PPT', label: 'PPT — Permiso de Protección Temporal' },
+  { value: 'NIT', label: 'NIT — NIT (instituciones)' },
 ];
 
 // ── Configuración de roles ────────────────────────────────
@@ -222,7 +222,7 @@ function UserModal({
                 className={`col-span-3 ${inp}`}/>
             </div>
             <p className="text-xs text-[#444] mt-1">
-              {DOCUMENT_TYPES.find(d => d.value === selectedDocType)?.desc}
+              {DOCUMENT_TYPES.find(d => d.value === selectedDocType)?.label}
             </p>
           </div>
 

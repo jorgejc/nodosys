@@ -85,6 +85,7 @@ export function useAuth() {
     isGlobalViewer,
     isDirector: isAdmin || isViceExt || isViceAcad || isEquipoExt || isDecano || isCoord,
     isVicerrector: isViceExt || isViceAcad,
+    isMonitorOrAuxiliar: isMonAux,
     hasRole,
   };
 }
