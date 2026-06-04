@@ -19,46 +19,47 @@ import { MovementType } from '../entities/inventory-movement.entity';
 // ─── Crear ítem del catálogo ──────────────────────────────
 export class CreateInventoryItemDto {
   @ApiProperty({ example: 'Portátil HP ProBook 440 G8' })
-  @IsString()
-  @MaxLength(200)
+  @IsString() @MaxLength(200)
   name: string;
-
-  @ApiProperty({ example: '00000000-0000-0000-0000-000000000001' })
+ 
+  @ApiPropertyOptional({ example: 'HP' })
+  @IsString() @IsOptional()
+  brand?: string;
+ 
+  @ApiPropertyOptional({ example: 'ProBook 440 G8' })
+  @IsString() @IsOptional()
+  model?: string;
+ 
+  @ApiProperty({ description: 'ID de la categoría' })
   @IsUUID()
   categoryId: string;
-
-  @ApiPropertyOptional({ example: 'HP' })
-  @IsString()
-  @IsOptional()
-  brand?: string;
-
-  @ApiPropertyOptional({ example: 'ProBook 440 G8' })
-  @IsString()
-  @IsOptional()
-  model?: string;
-
-  @ApiPropertyOptional({ example: 'Portátil para actividades de capacitación docente' })
-  @IsString()
-  @IsOptional()
+ 
+  @ApiPropertyOptional({ description: 'Descripción general del ítem' })
+  @IsString() @IsOptional()
   description?: string;
-
+ 
+  // ── Nuevos campos para juegos didácticos y materiales ──
+ 
   @ApiPropertyOptional({
-    example: true,
-    description: 'true = tiene serial (equipos), false = sin serial (muebles)',
+    description: 'URL de video YouTube, manual o referencia',
+    example: 'https://youtube.com/watch?v=...',
   })
-  @IsBoolean()
-  @IsOptional()
+  @IsString() @IsOptional()
+  referenceUrl?: string;
+ 
+  @ApiPropertyOptional({
+    description: 'Instrucciones de uso o cómo se juega',
+    example: 'Este juego se juega en equipos de 3...',
+  })
+  @IsString() @IsOptional()
+  howToUse?: string;
+ 
+  @ApiPropertyOptional({ description: 'Seguimiento por unidad individual' })
+  @IsBoolean() @IsOptional()
   trackByUnit?: boolean;
-
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  notes?: string;
-
-  // UUID del nodo (opcional para sistema multi-nodo)
-  @ApiPropertyOptional()
-  @IsUUID()
-  @IsOptional()
+ 
+  @ApiPropertyOptional({ description: 'ID del nodo al que pertenece' })
+  @IsUUID() @IsOptional()
   nodoId?: string;
 }
 

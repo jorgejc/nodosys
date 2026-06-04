@@ -84,6 +84,7 @@ export class InventoryController {
   @ApiQuery({ name: 'categoryId', required: false })
   @ApiQuery({ name: 'search', required: false })
   getItems(
+    @CurrentUser() user: User,
     @Query('nodoId') nodoId?: string,
     @Query('categoryId') categoryId?: string,
     @Query('search') search?: string,

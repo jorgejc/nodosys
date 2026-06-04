@@ -49,20 +49,39 @@ export class WorkPlanService {
   // PLANES DE TRABAJO
   // ══════════════════════════════════════════════════════════
 
-  async findAll(user: User): Promise<WorkPlan[]> {
-    const adminRoles: UserRole[] = [
-      UserRole.VICERRECTOR_EXTENSION, UserRole.DECANO,
-      UserRole.COORDINADOR, UserRole.ADMIN,
-    ];
-
-    const where = adminRoles.includes(user.role) ? {} : { userId: user.id };
-
-    return this.planRepo.find({
-      where,
-      relations: ['user', 'axes'],
-      order: { year: 'DESC', semester: 'DESC' },
-    });
+  // En el método findAll del WorkPlanService, REEMPLAZA la query actual por:
+async findAll(user: User): Promise<WorkPlan[]> {
+  const qb = this.planRepo
+    .createQueryBuilder('wp')
+    .leftJoinAndSelect('wp.user', 'u')
+    .leftJoinAndSelect('wp.axes', 'ax')
+    .orderBy('wp.created_at', 'DESC');
+ 
+  const { role, id: userId, faculty, program, nodoId } = user;
+ 
+  if (
+    role === UserRole.ADMIN ||
+    role === UserRole.VICERRECTOR_EXTENSION ||
+    role === UserRole.VICERRECTOR_ACADEMICO ||
+    role === UserRole.EQUIPO_EXTENSION
+  ) {
+    // Ven todos los planes de todos los nodos y docentes
+  } else if (role === UserRole.DECANO && faculty) {
+    // Solo docentes de su facultad
+    qb.where('u.faculty = :faculty', { faculty });
+  } else if (role === UserRole.COORDINADOR && program) {
+    // Solo docentes de su programa
+    qb.where('u.program = :program', { program });
+  } else if (role === UserRole.ENLACE && nodoId) {
+    // Planes de todos los docentes de su nodo
+    qb.where('u.nodo_id = :nodoId', { nodoId });
+  } else {
+    // Docente, monitor, auxiliar: solo su propio plan
+    qb.where('wp.user_id = :userId', { userId });
   }
+ 
+  return qb.getMany();
+}
 
   async findOne(id: string, user: User): Promise<WorkPlan & { summary: object }> {
     const plan = await this.planRepo.findOne({

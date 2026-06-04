@@ -21,6 +21,7 @@ import {
   CreateInventoryUnitDto, CreateGenericUnitsDto,
   UpdateInventoryUnitDto, CreateMovementDto,
 } from './dto/inventory.dto';
+import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class InventoryService {
@@ -58,57 +59,69 @@ export class InventoryService {
   // ÍTEMS DEL CATÁLOGO
   // ══════════════════════════════════════════════════════════
 
-  async getItems(filters: {
-    nodoId?: string;
-    categoryId?: string;
-    search?: string;
-  }): Promise<InventoryItem[]> {
-    const qb = this.itemRepo
-      .createQueryBuilder('item')
-      .leftJoinAndSelect('item.category', 'category')
-      .leftJoin('item.units', 'units')
-      // Contar unidades por estado en la misma query
-      .addSelect('COUNT(units.id)', 'totalUnits')
-      .addSelect(
-        `COUNT(CASE WHEN units.status = 'disponible' THEN 1 END)`,
-        'availableUnits',
-      )
-      .addSelect(
-        `COUNT(CASE WHEN units.condition = 'malo' OR units.condition = 'dado_de_baja' THEN 1 END)`,
-        'damagedUnits',
-      )
-      .where('item.deleted_at IS NULL')
-      .groupBy('item.id, category.id')
-      .orderBy('category.name', 'ASC')
-      .addOrderBy('item.name', 'ASC');
-
-    if (filters.nodoId) {
-      qb.andWhere('item.nodo_id = :nodoId', { nodoId: filters.nodoId });
+  async getItems(
+  filters: { nodoId?: string; categoryId?: string; search?: string },
+  user?: User,
+): Promise<InventoryItem[]> {
+  // ── Filtro por nodo según rol ──────────────────────────
+  const globalRoles = [
+    'admin', 'vicerrector_extension', 'vicerrector_academico',
+    'equipo_extension', 'decano', 'coordinador',
+  ];
+  if (user && !globalRoles.includes(user.role)) {
+    if (user.nodoId) {
+      // Enlace/docente/monitor/auxiliar — solo ve su nodo
+      filters.nodoId = user.nodoId;
+    } else {
+      // Sin nodo asignado — no ve ningún inventario
+      return [];
     }
-
-    if (filters.categoryId) {
-      qb.andWhere('item.category_id = :categoryId', { categoryId: filters.categoryId });
-    }
-
-    if (filters.search) {
-      qb.andWhere(
-        '(LOWER(item.name) LIKE :search OR LOWER(item.brand) LIKE :search OR LOWER(item.model) LIKE :search)',
-        { search: `%${filters.search.toLowerCase()}%` },
-      );
-    }
-
-    const raw = await qb.getRawAndEntities();
-
-    // Adjuntar conteos a cada ítem
-    return raw.entities.map((item, i) => {
-      const r = raw.raw[i];
-      return Object.assign(item, {
-        totalUnits: parseInt(r.totalUnits ?? '0'),
-        availableUnits: parseInt(r.availableUnits ?? '0'),
-        damagedUnits: parseInt(r.damagedUnits ?? '0'),
-      });
-    });
   }
+  // globalRoles sin filtro → ven todos los nodos
+
+  // ── Query ──────────────────────────────────────────────
+  const qb = this.itemRepo
+    .createQueryBuilder('item')
+    .leftJoinAndSelect('item.category', 'category')
+    .leftJoin('item.units', 'units')
+    .addSelect('COUNT(units.id)', 'totalUnits')
+    .addSelect(
+      `COUNT(CASE WHEN units.status = 'disponible' THEN 1 END)`,
+      'availableUnits',
+    )
+    .addSelect(
+      `COUNT(CASE WHEN units.condition = 'malo' OR units.condition = 'dado_de_baja' THEN 1 END)`,
+      'damagedUnits',
+    )
+    .where('item.deleted_at IS NULL')
+    .groupBy('item.id, category.id')
+    .orderBy('category.name', 'ASC')
+    .addOrderBy('item.name', 'ASC');
+
+  if (filters.nodoId) {
+    qb.andWhere('item.nodo_id = :nodoId', { nodoId: filters.nodoId });
+  }
+  if (filters.categoryId) {
+    qb.andWhere('item.category_id = :categoryId', { categoryId: filters.categoryId });
+  }
+  if (filters.search) {
+    qb.andWhere(
+      '(LOWER(item.name) LIKE :search OR LOWER(item.brand) LIKE :search OR LOWER(item.model) LIKE :search)',
+      { search: `%${filters.search.toLowerCase()}%` },
+    );
+  }
+
+  const raw = await qb.getRawAndEntities();
+
+  return raw.entities.map((item, i) => {
+    const r = raw.raw[i];
+    return Object.assign(item, {
+      totalUnits:     parseInt(r.totalUnits    ?? '0'),
+      availableUnits: parseInt(r.availableUnits ?? '0'),
+      damagedUnits:   parseInt(r.damagedUnits   ?? '0'),
+    });
+  });
+}
 
   async getItemById(id: string): Promise<InventoryItem> {
     const item = await this.itemRepo.findOne({
@@ -137,7 +150,6 @@ export class InventoryService {
       model: dto.model ?? null,
       description: dto.description ?? null,
       trackByUnit: dto.trackByUnit ?? true,
-      notes: dto.notes ?? null,
       nodoId: dto.nodoId ?? null,
       registeredBy: userId,
     });

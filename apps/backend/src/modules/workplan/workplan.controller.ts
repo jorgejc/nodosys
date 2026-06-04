@@ -26,6 +26,7 @@ export class WorkPlanController {
   @ApiOperation({ summary: 'Mis planes de trabajo (o todos si es admin/decano)' })
   findAll(@CurrentUser() user: User) {
     return this.svc.findAll(user);
+    
   }
 
   @Post()
