@@ -85,14 +85,19 @@ export class ActivitiesService {
     const request = await this.requestRepo.findOne({
       where: { id },
       relations: ['user', 'expenses', 'participants', 'evidence'],
-      order: {
-        expenses:     { expenseDate: 'ASC' },
-        participants: { registeredAt: 'ASC' },
-        evidence:     { uploadedAt: 'ASC' },
-      } as never,
     });
     if (!request) throw new NotFoundException('Solicitud no encontrada');
     if (!this.canView(request, user)) throw new ForbiddenException('Sin permiso para ver esta solicitud');
+
+    // Ordenar las subcolecciones en la aplicación — TypeORM no soporta
+    // order por relaciones OneToMany en findOne sin JOIN explícito.
+    if (request.expenses)
+      request.expenses.sort((a, b) => (a.expenseDate > b.expenseDate ? 1 : -1));
+    if (request.participants)
+      request.participants.sort((a, b) => (a.registeredAt > b.registeredAt ? 1 : -1));
+    if (request.evidence)
+      request.evidence.sort((a, b) => (a.uploadedAt > b.uploadedAt ? 1 : -1));
+
     return request;
   }
 
