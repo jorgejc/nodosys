@@ -48,12 +48,29 @@ import { User } from '../users/entities/user.entity';
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
+  // Roles que pueden ver datos de todos los nodos
+  private readonly globalRoles = [
+    'admin', 'vicerrector_extension', 'vicerrector_academico',
+    'equipo_extension', 'decano', 'coordinador',
+  ];
+
+  // Devuelve el nodo efectivo según el rol:
+  //  - undefined → sin filtro (roles globales)
+  //  - string    → filtrar por ese nodo
+  //  - null      → sin nodo asignado, sin acceso
+  private resolveNodo(user: User, requested?: string): string | null | undefined {
+    if (this.globalRoles.includes(user.role)) return requested;
+    return user.nodoId; // puede ser null si no tiene nodo
+  }
+
   // ── Categorías ────────────────────────────────────────────
   @Get('categories')
   @ApiOperation({ summary: 'Listar categorías de inventario' })
   @ApiQuery({ name: 'nodoId', required: false })
-  getCategories(@Query('nodoId') nodoId?: string) {
-    return this.inventoryService.getCategories(nodoId);
+  getCategories(@CurrentUser() user: User, @Query('nodoId') nodoId?: string) {
+    const nodo = this.resolveNodo(user, nodoId);
+    if (nodo === null) return [];
+    return this.inventoryService.getCategories(nodo);
   }
 
   @Post('categories')
@@ -66,15 +83,23 @@ export class InventoryController {
   @Get('summary')
   @ApiOperation({ summary: 'Estadísticas generales del inventario' })
   @ApiQuery({ name: 'nodoId', required: false })
-  getSummary(@Query('nodoId') nodoId?: string) {
-    return this.inventoryService.getSummary(nodoId);
+  getSummary(@CurrentUser() user: User, @Query('nodoId') nodoId?: string) {
+    const nodo = this.resolveNodo(user, nodoId);
+    if (nodo === null) {
+      return Promise.resolve({ total_units: 0, disponible: 0, en_prestamo: 0,
+        en_reparacion: 0, excelente: 0, bueno: 0, regular: 0, malo: 0,
+        dado_de_baja: 0, total_categories: 0, total_items: 0 });
+    }
+    return this.inventoryService.getSummary(nodo);
   }
 
   @Get('loans')
   @ApiOperation({ summary: 'Préstamos activos (unidades en_prestamo)' })
   @ApiQuery({ name: 'nodoId', required: false })
-  getActiveLoans(@Query('nodoId') nodoId?: string) {
-    return this.inventoryService.getActiveLoans(nodoId);
+  getActiveLoans(@CurrentUser() user: User, @Query('nodoId') nodoId?: string) {
+    const nodo = this.resolveNodo(user, nodoId);
+    if (nodo === null) return Promise.resolve([]);
+    return this.inventoryService.getActiveLoans(nodo);
   }
 
   // ── Ítems del catálogo ────────────────────────────────────
@@ -89,7 +114,7 @@ export class InventoryController {
     @Query('categoryId') categoryId?: string,
     @Query('search') search?: string,
   ) {
-    return this.inventoryService.getItems({ nodoId, categoryId, search });
+    return this.inventoryService.getItems({ nodoId, categoryId, search }, user);
   }
 
   @Post('items')

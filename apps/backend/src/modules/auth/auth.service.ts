@@ -86,6 +86,8 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      nodoId: user.nodoId ?? null,
+      nodoName: user.nodoName ?? null,
     };
     return this.jwtService.sign(payload);
   }

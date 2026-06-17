@@ -394,7 +394,7 @@ export class InventoryService {
   // RESUMEN / ESTADÍSTICAS
   // ══════════════════════════════════════════════════════════
   async getSummary(nodoId?: string): Promise<object> {
-    const where = nodoId ? 'WHERE i.nodo_id = :nodoId' : '';
+    const where = nodoId ? 'WHERE i.nodo_id = $1' : '';
 
     const result = await this.unitRepo.query(
       `

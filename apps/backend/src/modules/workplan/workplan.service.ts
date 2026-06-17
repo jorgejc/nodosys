@@ -30,14 +30,26 @@ export class WorkPlanService {
   ) {}
 
   // ── Puede el usuario ver este plan? ──────────────────────
+  // Requiere que plan.user esté cargado para la verificación por nodo.
   private canView(plan: WorkPlan, user: User): boolean {
-    const viewerRoles: UserRole[] = [
-      UserRole.VICERRECTOR_EXTENSION,
-      UserRole.DECANO,
-      UserRole.COORDINADOR,
-      UserRole.ADMIN,
-    ];
-    return plan.userId === user.id || viewerRoles.includes(user.role);
+    switch (user.role) {
+      case UserRole.ADMIN:
+      case UserRole.VICERRECTOR_EXTENSION:
+      case UserRole.VICERRECTOR_ACADEMICO:
+      case UserRole.EQUIPO_EXTENSION:
+        return true;
+      case UserRole.DECANO:
+        return !!user.faculty && plan.faculty === user.faculty;
+      case UserRole.COORDINADOR:
+        return !!user.program && plan.program === user.program;
+      case UserRole.ENLACE:
+      case UserRole.MONITOR:
+      case UserRole.AUXILIAR:
+        return !!user.nodoId && (plan.user?.nodoId === user.nodoId || plan.userId === user.id);
+      default:
+        // DOCENTE: solo su propio plan
+        return plan.userId === user.id;
+    }
   }
 
   private canEdit(plan: WorkPlan, user: User): boolean {
@@ -72,11 +84,14 @@ async findAll(user: User): Promise<WorkPlan[]> {
   } else if (role === UserRole.COORDINADOR && program) {
     // Solo docentes de su programa
     qb.where('u.program = :program', { program });
-  } else if (role === UserRole.ENLACE && nodoId) {
-    // Planes de todos los docentes de su nodo
+  } else if (
+    (role === UserRole.ENLACE || role === UserRole.MONITOR || role === UserRole.AUXILIAR)
+    && nodoId
+  ) {
+    // Enlace/monitor/auxiliar: planes de todos los usuarios de su nodo
     qb.where('u.nodo_id = :nodoId', { nodoId });
   } else {
-    // Docente, monitor, auxiliar: solo su propio plan
+    // Docente sin nodo: solo su propio plan
     qb.where('wp.user_id = :userId', { userId });
   }
  

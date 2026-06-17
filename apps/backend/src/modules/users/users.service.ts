@@ -68,7 +68,7 @@ export class UsersService {
     if (filters.search) {
       const s = `%${filters.search.toLowerCase()}%`;
       qb.andWhere(
-        '(LOWER(u.name) LIKE :s OR LOWER(u.email) LIKE :s OR u.cedula LIKE :s)',
+        '(LOWER(u.name) LIKE :s OR LOWER(u.email) LIKE :s OR u.document_number LIKE :s)',
         { s },
       );
     }
@@ -153,5 +153,14 @@ export class UsersService {
     const user = await this.findById(id);
     user.isActive = false;
     return this.repo.save(user);
+  }
+
+  async getNodos(): Promise<{ nodoId: string; nodoName: string }[]> {
+    return this.repo.query(`
+      SELECT DISTINCT nodo_id AS "nodoId", nodo_name AS "nodoName"
+      FROM users
+      WHERE nodo_id IS NOT NULL AND nodo_name IS NOT NULL
+      ORDER BY nodo_name ASC
+    `);
   }
 }

@@ -41,12 +41,27 @@ export class ActivitiesService {
     private readonly dataSource: DataSource,
   ) {}
 
+  // Roles que ven TODAS las actividades (sin filtro de nodo)
+  private readonly GLOBAL_REVIEWERS: UserRole[] = [
+    UserRole.ADMIN, UserRole.VICERRECTOR_EXTENSION, UserRole.EQUIPO_EXTENSION,
+    UserRole.DECANO, UserRole.COORDINADOR,
+  ];
+
+  // Roles que gestionan actividades dentro de su nodo
+  private readonly NODO_ROLES: UserRole[] = [
+    UserRole.ENLACE, UserRole.MONITOR, UserRole.AUXILIAR,
+  ];
+
   // ── ¿Puede el usuario ver esta solicitud? ─────────────────
+  // Requiere que request.user esté cargado para verificar nodo.
   private canView(request: ActivityRequest, user: User): boolean {
-    const reviewerRoles: UserRole[] = [
-      UserRole.ADMIN, UserRole.VICERRECTOR_EXTENSION, UserRole.DECANO, UserRole.COORDINADOR,
-    ];
-    return request.userId === user.id || reviewerRoles.includes(user.role);
+    if (this.GLOBAL_REVIEWERS.includes(user.role)) return true;
+    if (request.userId === user.id) return true;
+    // ENLACE/MONITOR/AUXILIAR ven actividades de usuarios de su nodo
+    if (this.NODO_ROLES.includes(user.role)) {
+      return !!user.nodoId && request.user?.nodoId === user.nodoId;
+    }
+    return false;
   }
 
   private canEdit(request: ActivityRequest, user: User): boolean {
@@ -55,7 +70,7 @@ export class ActivitiesService {
   }
 
   private isReviewer(user: User): boolean {
-    return [UserRole.ADMIN, UserRole.VICERRECTOR_EXTENSION, UserRole.DECANO].includes(user.role);
+    return this.GLOBAL_REVIEWERS.includes(user.role);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -68,8 +83,13 @@ export class ActivitiesService {
       .leftJoinAndSelect('r.user', 'u')
       .orderBy('r.activity_date', 'DESC');
 
-    // Docentes y enlaces solo ven sus propias solicitudes
-    if (!this.isReviewer(user)) {
+    if (this.isReviewer(user)) {
+      // Roles globales: ven todas las actividades
+    } else if (this.NODO_ROLES.includes(user.role) && user.nodoId) {
+      // ENLACE/MONITOR/AUXILIAR: solo actividades de usuarios de su nodo
+      qb.where('u.nodo_id = :nodoId', { nodoId: user.nodoId });
+    } else {
+      // DOCENTE u otros sin nodo: solo las propias
       qb.where('r.user_id = :uid', { uid: user.id });
     }
 

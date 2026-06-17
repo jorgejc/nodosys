@@ -7,6 +7,8 @@ import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { User } from '../users/entities/user.entity';
 
 @ApiTags('Reportes')
 @ApiBearerAuth()
@@ -15,12 +17,35 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 export class ReportsController {
   constructor(private readonly svc: ReportsService) {}
 
+  private readonly GLOBAL_ROLES = [
+    'admin', 'vicerrector_extension', 'vicerrector_academico',
+    'equipo_extension', 'decano', 'coordinador',
+  ];
+
+  // Devuelve { nodoId, nodoLabel } para los reportes de inventario
+  private resolveInventoryNodo(
+    user: User,
+    requested?: string,
+  ): { nodoId?: string; nodoLabel: string } {
+    const isGlobal = this.GLOBAL_ROLES.includes(user.role);
+    const nodoId   = isGlobal ? requested : (user.nodoId ?? undefined);
+    const nodoLabel = user.nodoName
+      ? `NODO ${user.nodoName.toUpperCase()}`
+      : nodoId ? `NODO ${nodoId.slice(0, 8).toUpperCase()}` : 'TODOS LOS NODOS';
+    return { nodoId, nodoLabel };
+  }
+
   // ── Inventario ────────────────────────────────────────────
   @Get('inventory/excel')
   @ApiOperation({ summary: 'Descargar inventario en Excel (.xlsx)' })
   @ApiQuery({ name: 'nodoId', required: false })
-  async inventoryExcel(@Res() res: Response, @Query('nodoId') nodoId?: string) {
-    const buffer = await this.svc.generateInventoryExcel(nodoId);
+  async inventoryExcel(
+    @Res() res: Response,
+    @CurrentUser() user: User,
+    @Query('nodoId') nodoId?: string,
+  ) {
+    const { nodoId: effectiveNodoId, nodoLabel } = this.resolveInventoryNodo(user, nodoId);
+    const buffer = await this.svc.generateInventoryExcel(effectiveNodoId, nodoLabel);
     const filename = `inventario-nodo-${new Date().toISOString().split('T')[0]}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -30,8 +55,13 @@ export class ReportsController {
   @Get('inventory/pdf')
   @ApiOperation({ summary: 'Descargar inventario en PDF' })
   @ApiQuery({ name: 'nodoId', required: false })
-  async inventoryPdf(@Res() res: Response, @Query('nodoId') nodoId?: string) {
-    const buffer = await this.svc.generateInventoryPdf(nodoId);
+  async inventoryPdf(
+    @Res() res: Response,
+    @CurrentUser() user: User,
+    @Query('nodoId') nodoId?: string,
+  ) {
+    const { nodoId: effectiveNodoId, nodoLabel } = this.resolveInventoryNodo(user, nodoId);
+    const buffer = await this.svc.generateInventoryPdf(effectiveNodoId, nodoLabel);
     const filename = `inventario-nodo-${new Date().toISOString().split('T')[0]}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

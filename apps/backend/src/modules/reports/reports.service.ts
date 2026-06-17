@@ -87,7 +87,7 @@ export class ReportsService {
   // ══════════════════════════════════════════════════════════
   // INVENTARIO → PDF
   // ══════════════════════════════════════════════════════════
-  async generateInventoryPdf(nodoId?: string): Promise<Buffer> {
+  async generateInventoryPdf(nodoId?: string, nodoLabel = 'IU DIGITAL'): Promise<Buffer> {
     const items = await this.itemRepo.find({
       where: { deletedAt: IsNull(), ...(nodoId ? { nodoId } : {}) },
       relations: ['category', 'units'],
@@ -156,7 +156,7 @@ export class ReportsService {
       pageMargins: [40, 55, 40, 45],
       header: {
         columns: [
-          { text: 'NODOSYS · IU DIGITAL · NODO ARBOLETES', fontSize: 8, color: '#888888', margin: [40, 15, 0, 0] },
+          { text: `NODOSYS · IU DIGITAL · ${nodoLabel}`, fontSize: 8, color: '#888888', margin: [40, 15, 0, 0] },
           { text: `Generado: ${new Date().toLocaleDateString('es-CO')}`, fontSize: 8, color: '#888888', alignment: 'right', margin: [0, 15, 40, 0] },
         ],
       },
@@ -207,7 +207,7 @@ export class ReportsService {
   // ══════════════════════════════════════════════════════════
   // INVENTARIO → EXCEL
   // ══════════════════════════════════════════════════════════
-  async generateInventoryExcel(nodoId?: string): Promise<Buffer> {
+  async generateInventoryExcel(nodoId?: string, nodoLabel = 'IU DIGITAL'): Promise<Buffer> {
     const items = await this.itemRepo.find({
       where: { deletedAt: IsNull(), ...(nodoId ? { nodoId } : {}) },
       relations: ['category', 'units'],
@@ -224,7 +224,7 @@ export class ReportsService {
     // Título
     ws1.mergeCells('A1:I1');
     const titleCell = ws1.getCell('A1');
-    titleCell.value = 'INVENTARIO NODO ARBOLETES · IU DIGITAL';
+    titleCell.value = `INVENTARIO ${nodoLabel} · IU DIGITAL`;
     titleCell.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
     titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF6B2B' } };
     titleCell.alignment = { horizontal: 'center', vertical: 'middle' };

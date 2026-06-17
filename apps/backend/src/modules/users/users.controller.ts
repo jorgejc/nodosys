@@ -19,6 +19,13 @@ import { User, UserRole } from './entities/user.entity';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  // GET /api/users/nodos — Lista de nodos distintos para el selector de inventario/reportes
+  @Get('nodos')
+  @ApiOperation({ summary: 'Lista de nodos registrados en el sistema' })
+  getNodos() {
+    return this.usersService.getNodos();
+  }
+
   // GET /api/users — Admin, vicerrectores y decanos pueden listar usuarios
   @Get()
   @UseGuards(RolesGuard)
