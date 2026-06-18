@@ -5,8 +5,8 @@ export class Nodo {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'varchar', length: 200, unique: true })
-  name: string;
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  name: string | null;
 
   @Column({ default: true })
   active: boolean;

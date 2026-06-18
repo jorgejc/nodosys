@@ -15,6 +15,8 @@ export class NodosService {
       where: { active: true },
       order: { name: 'ASC' },
     });
-    return nodos.map(n => ({ nodoId: n.id, nodoName: n.name }));
+    return nodos
+      .filter(n => n.name)
+      .map(n => ({ nodoId: n.id, nodoName: n.name! }));
   }
 }
