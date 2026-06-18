@@ -43,7 +43,11 @@ export class CreateUserDto {
   @ApiPropertyOptional()
   @IsUUID() @IsOptional()
   nodoId?: string;
- 
+
+  @ApiPropertyOptional()
+  @IsString() @IsOptional()
+  nodoName?: string;
+
   @ApiPropertyOptional()
   @IsString() @IsOptional()
   faculty?: string;

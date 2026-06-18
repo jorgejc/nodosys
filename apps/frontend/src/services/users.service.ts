@@ -31,5 +31,5 @@ export const usersService = {
     api.post('/auth/register', data).then((r) => r.data),
 
   getNodos: () =>
-    api.get<{ nodoId: string; nodoName: string }[]>('/users/nodos').then((r) => r.data),
+    api.get<{ nodoId: string; nodoName: string }[]>('/nodos').then((r) => r.data),
 };

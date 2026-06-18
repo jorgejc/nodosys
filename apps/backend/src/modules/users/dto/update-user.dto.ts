@@ -45,7 +45,11 @@ export class UpdateUserDto {
   @ApiPropertyOptional()
   @IsUUID() @IsOptional()
   nodoId?: string;
- 
+
+  @ApiPropertyOptional()
+  @IsString() @MaxLength(200) @IsOptional()
+  nodoName?: string;
+
   @ApiPropertyOptional()
   @IsString() @IsOptional()
   faculty?: string;

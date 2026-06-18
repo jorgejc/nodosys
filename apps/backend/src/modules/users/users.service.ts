@@ -107,13 +107,14 @@ export class UsersService {
       email: dto.email,
       passwordHash: dto.password,
       role: dto.role as UserRole ?? UserRole.DOCENTE,
-      nodoId: dto.nodoId ?? creator.nodoId ?? null,
+      nodoId:   dto.nodoId   ?? creator.nodoId   ?? null,
+      nodoName: dto.nodoName ?? creator.nodoName ?? null,
       faculty: dto.faculty ?? null,
       program: dto.program ?? null,
       phone: dto.phone ?? null,
       position: dto.position ?? null,
     });
- 
+
     return this.repo.save(user);
   }
  

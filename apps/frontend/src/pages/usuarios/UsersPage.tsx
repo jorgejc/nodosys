@@ -9,7 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
   Users, Plus, Search, X, Save, Loader2, Shield,
-  Eye, EyeOff, CheckCircle2, XCircle, Pencil, Info, Filter,
+  Eye, EyeOff, CheckCircle2, XCircle, Pencil, Info, Filter, MapPin,
 } from 'lucide-react';
 import { usersService } from '@/services/users.service';
 import { useAuth } from '@/hooks/useAuth';
@@ -45,6 +45,9 @@ const ROLE_CFG: Record<string, {
   auxiliar:              { label:'Auxiliar',              color:'text-[#888] bg-[#1A1A1A] border-[#333]',                description:'Apoyo operativo del nodo',             reqFaculty:false, reqProgram:false },
 };
 
+// Roles que requieren tener un nodo asignado
+const NODO_ROLES = ['enlace', 'monitor', 'auxiliar'];
+
 // Qué roles puede asignar cada perfil
 const ASSIGNABLE: Record<string, string[]> = {
   admin:  Object.keys(ROLE_CFG),
@@ -63,6 +66,8 @@ const schema = z.object({
   email:          z.string().email('Ingresa un email válido'),
   password:       z.string().min(8,'La contraseña debe tener al menos 8 caracteres').optional().or(z.literal('')),
   role:           z.string().min(1,'Debes seleccionar un rol'),
+  nodoId:         z.string().optional(),
+  nodoName:       z.string().optional(),
   faculty:        z.string().optional(),
   program:        z.string().optional(),
   phone:          z.string().optional(),
@@ -73,6 +78,8 @@ const schema = z.object({
     ctx.addIssue({ code:'custom', path:['faculty'], message:`La facultad es obligatoria para el rol ${cfg.label}` });
   if (cfg?.reqProgram && !d.program?.trim())
     ctx.addIssue({ code:'custom', path:['program'], message:`El programa es obligatorio para el rol ${cfg.label}` });
+  if (NODO_ROLES.includes(d.role) && !d.nodoName?.trim())
+    ctx.addIssue({ code:'custom', path:['nodoName'], message:'Debes asignar un nodo a este rol' });
 });
 type FD = z.infer<typeof schema>;
 
@@ -118,10 +125,13 @@ function UserModal({
   const isEdit = !!user?.id;
   const [showPass, setShowPass] = useState(false);
   const [serverError, setServerError] = useState('');
+  const [nodoInputMode, setNodoInputMode] = useState<'picker' | 'new'>(
+    user?.nodoId ? 'picker' : 'new'
+  );
 
   const assignable = ASSIGNABLE[myRole ?? ''] ?? (isAdmin ? Object.keys(ROLE_CFG) : []);
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<FD>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FD>({
     resolver: zodResolver(schema),
     defaultValues: {
       name:           user?.name           ?? '',
@@ -130,6 +140,8 @@ function UserModal({
       email:          user?.email          ?? '',
       password:       '',
       role:           user?.role           ?? 'docente',
+      nodoId:         user?.nodoId         ?? '',
+      nodoName:       user?.nodoName       ?? '',
       faculty:        user?.faculty        ?? '',
       program:        user?.program        ?? '',
       phone:          user?.phone          ?? '',
@@ -139,21 +151,48 @@ function UserModal({
 
   const selectedRole = watch('role');
   const selectedDocType = watch('documentType');
+  const watchedNodoId   = watch('nodoId');
+  const watchedNodoName = watch('nodoName');
   const cfg = ROLE_CFG[selectedRole];
+  const isNodoRole = NODO_ROLES.includes(selectedRole);
+
+  // Carga nodos existentes cuando el rol lo requiere
+  const nodosQuery = useQuery({
+    queryKey: ['nodos'],
+    queryFn:  usersService.getNodos,
+    enabled:  isNodoRole,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const pickNodo = (nodoId: string, nodoName: string) => {
+    setValue('nodoId', nodoId);
+    setValue('nodoName', nodoName);
+    setNodoInputMode('picker');
+  };
+
+  const startNewNodo = () => {
+    setValue('nodoId', crypto.randomUUID());
+    setValue('nodoName', '');
+    setNodoInputMode('new');
+  };
 
   const mutation = useMutation({
     mutationFn: (data: FD) => {
       const payload: Record<string, unknown> = {};
-      // Solo enviar campos con valor
       if (data.name)           payload.name           = data.name;
       if (data.documentType)   payload.documentType   = data.documentType;
       if (data.documentNumber) payload.documentNumber = data.documentNumber;
       if (data.email)          payload.email          = data.email;
-      if (data.password)       payload.password       = data.password;  // solo si tiene valor
+      if (data.password)       payload.password       = data.password;
       if (data.role)           payload.role           = data.role;
       if (data.phone)          payload.phone          = data.phone;
       if (data.position)       payload.position       = data.position;
-      // Facultad/programa solo si el rol los requiere
+      // Nodo: solo para roles que lo requieren
+      if (isNodoRole) {
+        if (data.nodoId)   payload.nodoId   = data.nodoId;
+        if (data.nodoName) payload.nodoName = data.nodoName;
+      }
+      // Facultad/programa
       if (cfg?.reqFaculty || isAdmin) {
         if (data.faculty) payload.faculty = data.faculty;
       }
@@ -277,6 +316,69 @@ function UserModal({
               </p>
             )}
           </div>
+
+          {/* Selector de nodo — solo para enlace / monitor / auxiliar */}
+          {isNodoRole && (
+            <div>
+              <label className={lbl}>
+                <MapPin size={11} className="inline mr-1 mb-0.5"/>
+                Nodo asignado *
+              </label>
+
+              {/* Chips de nodos existentes */}
+              {(nodosQuery.data?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {nodosQuery.data!.map(n => (
+                    <button
+                      type="button" key={n.nodoId}
+                      onClick={() => pickNodo(n.nodoId, n.nodoName)}
+                      className={`px-3 py-1.5 text-xs rounded-lg border font-mono transition-colors ${
+                        watchedNodoId === n.nodoId && nodoInputMode === 'picker'
+                          ? 'bg-[#FF6B2B]/10 border-[#FF6B2B]/30 text-[#FF6B2B]'
+                          : 'bg-[#1A1A1A] border-[#2A2A2A] text-[#666] hover:text-white hover:border-[#444]'
+                      }`}
+                    >
+                      {n.nodoName}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={startNewNodo}
+                    className={`px-3 py-1.5 text-xs rounded-lg border font-mono transition-colors ${
+                      nodoInputMode === 'new'
+                        ? 'bg-[#FF6B2B]/10 border-[#FF6B2B]/30 text-[#FF6B2B]'
+                        : 'bg-[#1A1A1A] border-[#2A2A2A] text-[#666] hover:text-white hover:border-[#444]'
+                    }`}
+                  >
+                    + Nuevo nodo
+                  </button>
+                </div>
+              )}
+
+              {/* Input: nombre del nodo (visible cuando mode=new o no hay nodos aún) */}
+              {(nodoInputMode === 'new' || (nodosQuery.data?.length ?? 0) === 0) && (
+                <input
+                  value={watchedNodoName ?? ''}
+                  onChange={e => setValue('nodoName', e.target.value)}
+                  placeholder="Nombre del nodo (ej: Arboletes, Medellín...)"
+                  className={errors.nodoName ? inpErr : inp}
+                />
+              )}
+
+              {/* Confirmación: nodo seleccionado */}
+              {watchedNodoName && nodoInputMode === 'picker' && (
+                <p className="text-xs text-[#FF6B2B] mt-1 font-mono">
+                  ✓ {watchedNodoName}
+                </p>
+              )}
+
+              {errors.nodoName && (
+                <p className="text-red-400 text-xs mt-1 flex items-center gap-1">
+                  <Info size={10}/> {errors.nodoName.message}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Aviso contextual del rol */}
           {hint && (
@@ -480,8 +582,18 @@ export default function UsersPage() {
                       </td>
                       <td className="px-4 py-3.5"><RoleBadge role={u.role}/></td>
                       <td className="px-4 py-3.5">
-                        <div className="text-xs text-[#888]">{u.faculty ?? '—'}</div>
-                        {u.program && <div className="text-xs text-[#555]">{u.program}</div>}
+                        {NODO_ROLES.includes(u.role) ? (
+                          u.nodoName
+                            ? <span className="flex items-center gap-1 text-xs text-[#FF6B2B]">
+                                <MapPin size={10}/>{u.nodoName}
+                              </span>
+                            : <span className="text-xs text-yellow-500">Sin nodo</span>
+                        ) : (
+                          <>
+                            <div className="text-xs text-[#888]">{u.faculty ?? '—'}</div>
+                            {u.program && <div className="text-xs text-[#555]">{u.program}</div>}
+                          </>
+                        )}
                       </td>
                       <td className="px-4 py-3.5">
                         {u.isActive
@@ -501,9 +613,11 @@ export default function UsersPage() {
                                   documentNumber: u.documentNumber ?? '',
                                   email:          u.email,
                                   role:           u.role,
-                                  faculty:        u.faculty ?? '',
-                                  program:        u.program ?? '',
-                                  phone:          u.phone ?? '',
+                                  nodoId:         u.nodoId   ?? '',
+                                  nodoName:       u.nodoName ?? '',
+                                  faculty:        u.faculty  ?? '',
+                                  program:        u.program  ?? '',
+                                  phone:          u.phone    ?? '',
                                   position:       u.position ?? '',
                                   password:       '',
                                 })}

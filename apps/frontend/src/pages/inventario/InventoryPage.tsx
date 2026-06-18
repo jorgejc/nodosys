@@ -30,6 +30,9 @@ const GLOBAL_ROLES = [
   'equipo_extension', 'decano', 'coordinador',
 ];
 
+// Roles que deberían tener nodo asignado — sin él, el inventario no aplica
+const NODO_ROLES = ['enlace', 'monitor', 'auxiliar'];
+
 // ── Tarjeta de estadística ────────────────────────────────
 function StatCard({
   label, value, sub, color, border,
@@ -65,7 +68,8 @@ export default function InventoryPage() {
   const [selectedNodoId, setSelectedNodoId] = useState<string | undefined>();
 
   const isGlobalRole = GLOBAL_ROLES.includes(user?.role ?? '');
-  const hasNodo = !isGlobalRole && !!user?.nodoId;
+  const isNodoRole   = NODO_ROLES.includes(user?.role ?? '');
+  const hasNodo = isNodoRole && !!user?.nodoId;
 
   // Para roles de nodo el backend filtra por JWT; el frontend no pasa nodoId.
   // Para roles globales el frontend pasa el nodo seleccionado (undefined = todos).
@@ -114,9 +118,11 @@ export default function InventoryPage() {
     ? (selectedNodoId
         ? `Equipos y materiales del nodo ${selectedNodoName}`
         : 'Vista consolidada de todos los nodos del sistema')
-    : (user?.nodoId
-        ? `Equipos y materiales del nodo ${user.nodoName ?? ''}`
-        : 'Tu cuenta no tiene un nodo asignado — contacta al administrador');
+    : (hasNodo
+        ? `Equipos y materiales del nodo ${user?.nodoName ?? ''}`
+        : isNodoRole
+          ? 'Tu cuenta no tiene un nodo asignado — contacta al administrador'
+          : 'Módulo de inventario');
 
   return (
     <div className="space-y-6">
@@ -127,7 +133,7 @@ export default function InventoryPage() {
             // MÓDULO DE INVENTARIO
           </p>
           <h1 className="text-2xl font-bold text-white">{headerTitle}</h1>
-          <p className={`text-sm mt-1 ${!isGlobalRole && !user?.nodoId ? 'text-yellow-500' : 'text-[#666]'}`}>
+          <p className={`text-sm mt-1 ${isNodoRole && !user?.nodoId ? 'text-yellow-500' : 'text-[#666]'}`}>
             {headerSub}
           </p>
         </div>
@@ -176,7 +182,7 @@ export default function InventoryPage() {
       )}
 
       {/* Advertencia: usuario sin nodo asignado */}
-      {!isGlobalRole && !user?.nodoId && (
+      {isNodoRole && !user?.nodoId && (
         <div className="flex items-center gap-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-5 py-4">
           <AlertTriangle size={18} className="text-yellow-500 flex-shrink-0" />
           <div>
@@ -286,7 +292,7 @@ export default function InventoryPage() {
             <p className="text-[#555] text-sm">
               {search
                 ? 'No se encontraron resultados'
-                : !isGlobalRole && !user?.nodoId
+                : isNodoRole && !user?.nodoId
                   ? 'Asigna un nodo a tu cuenta para ver inventario'
                   : 'No hay ítems registrados en este nodo'}
             </p>
