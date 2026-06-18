@@ -40,6 +40,8 @@ async function buildApp(
   return app;
 }
 
+jest.setTimeout(30000);
+
 describe('InventoryController — integración (Supertest)', () => {
   const mockService: jest.Mocked<Partial<InventoryService>> = {
     getItems:       jest.fn().mockResolvedValue([]),

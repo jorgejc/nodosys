@@ -120,7 +120,7 @@ export default function AppLayout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="h-16 border-b border-[#1E1E1E] bg-[#0D0D0D] flex items-center px-6 flex-shrink-0">
           <div className="flex items-center gap-2 text-xs font-mono text-[#555]">
-            <span>NODO ARBOLETES</span>
+            <span>{user?.nodoName ?? 'IU Digital'}</span>
             <span className="text-[#2A2A2A]">/</span>
             <span className="text-[#888] uppercase">{user?.role?.replace('_', ' ')}</span>
           </div>

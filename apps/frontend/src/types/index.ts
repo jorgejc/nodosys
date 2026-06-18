@@ -30,6 +30,7 @@ export type DocumentType =
 export interface User {
   id: string;
   nodoId: string | null;
+  nodoName: string | null;
   faculty?: string | null;
   program?: string | null;
   documentType?: DocumentType | null;

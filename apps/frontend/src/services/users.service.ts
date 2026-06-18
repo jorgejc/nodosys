@@ -29,4 +29,7 @@ export const usersService = {
   // Registrar usuario nuevo (endpoint público)
   register: (data: Record<string, unknown>) =>
     api.post('/auth/register', data).then((r) => r.data),
+
+  getNodos: () =>
+    api.get<{ nodoId: string; nodoName: string }[]>('/users/nodos').then((r) => r.data),
 };

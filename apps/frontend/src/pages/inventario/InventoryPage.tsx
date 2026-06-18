@@ -1,27 +1,41 @@
 /**
  * InventoryPage.tsx — Página principal del inventario
  *
- * Muestra:
- *  - Tarjetas de resumen (total, disponibles, prestados, dañados)
- *  - Filtros por categoría y búsqueda
- *  - Tabla de ítems del catálogo con conteo de unidades por estado
- *  - Acciones: ver detalle, agregar ítem
+ * Roles globales (admin, vicerrector, decano, coordinador):
+ *   - Selector de nodos en la parte superior
+ *   - Sin selección → vista consolidada de todos los nodos
+ *   - Con selección → inventario de ese nodo
+ *
+ * Roles de nodo (enlace, monitor, auxiliar, docente con nodo):
+ *   - Carga automáticamente el inventario de su nodo (backend filtra por JWT)
+ *   - Sin nodo asignado → mensaje de advertencia
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Package, Search, Plus, AlertTriangle, ArrowUpRight, Loader2, RefreshCw, Pencil } from 'lucide-react';
+import {
+  Package, Search, Plus, AlertTriangle,
+  ArrowUpRight, Loader2, RefreshCw, Pencil, MapPin,
+} from 'lucide-react';
 import { inventoryItemService, inventoryCategoryService } from '@/services/inventory.service';
+import { usersService } from '@/services/users.service';
 import EditInventoryItemModal from '@/components/inventory/EditInventoryItemModal';
+import { useAuthStore } from '@/stores/auth.store';
+import { useAuth } from '@/hooks/useAuth';
 import type { InventoryCategory } from '@/types';
 import { usePagination } from '@/components/ui/Pagination';
 
+const GLOBAL_ROLES = [
+  'admin', 'vicerrector_extension', 'vicerrector_academico',
+  'equipo_extension', 'decano', 'coordinador',
+];
+
 // ── Tarjeta de estadística ────────────────────────────────
 function StatCard({
-  label, value, sub, color, bg, border,
+  label, value, sub, color, border,
 }: {
   label: string; value: string | number; sub?: string;
-  color: string; bg: string; border: string;
+  color: string; border: string;
 }) {
   return (
     <div className={`bg-[#111] border ${border} rounded-xl p-5`}>
@@ -32,51 +46,77 @@ function StatCard({
   );
 }
 
-// ── Badge de condición de unidad ──────────────────────────
 function ConditionDot({ condition }: { condition: string }) {
   const map: Record<string, string> = {
-    excelente: 'bg-emerald-500',
-    bueno: 'bg-green-500',
-    regular: 'bg-yellow-500',
-    malo: 'bg-red-500',
-    dado_de_baja: 'bg-[#444]',
+    excelente: 'bg-emerald-500', bueno: 'bg-green-500',
+    regular: 'bg-yellow-500', malo: 'bg-red-500', dado_de_baja: 'bg-[#444]',
   };
-  return (
-    <span className={`inline-block w-2 h-2 rounded-full ${map[condition] ?? 'bg-[#444]'}`} />
-  );
+  return <span className={`inline-block w-2 h-2 rounded-full ${map[condition] ?? 'bg-[#444]'}`} />;
 }
 
 export default function InventoryPage() {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const { canAddInventory } = useAuth();
+
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [selectedNodoId, setSelectedNodoId] = useState<string | undefined>();
 
-  // ── Queries TanStack Query ────────────────────────────────
+  const isGlobalRole = GLOBAL_ROLES.includes(user?.role ?? '');
+  const hasNodo = !isGlobalRole && !!user?.nodoId;
+
+  // Para roles de nodo el backend filtra por JWT; el frontend no pasa nodoId.
+  // Para roles globales el frontend pasa el nodo seleccionado (undefined = todos).
+  const effectiveNodoId = isGlobalRole ? selectedNodoId : undefined;
+
+  // ── Lista de nodos (solo roles globales) ──────────────────
+  const nodosQuery = useQuery({
+    queryKey: ['nodos'],
+    queryFn: () => usersService.getNodos(),
+    enabled: isGlobalRole,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const selectedNodoName = nodosQuery.data?.find(n => n.nodoId === selectedNodoId)?.nodoName;
+
+  // ── Queries de inventario ─────────────────────────────────
   const summaryQuery = useQuery({
-    queryKey: ['inventory-summary'],
-    queryFn: () => inventoryItemService.getSummary(),
+    queryKey: ['inventory-summary', effectiveNodoId ?? 'all'],
+    queryFn: () => inventoryItemService.getSummary(effectiveNodoId),
   });
 
   const categoriesQuery = useQuery({
-    queryKey: ['inventory-categories'],
-    queryFn: () => inventoryCategoryService.getAll(),
+    queryKey: ['inventory-categories', effectiveNodoId ?? 'all'],
+    queryFn: () => inventoryCategoryService.getAll(effectiveNodoId),
   });
 
   const itemsQuery = useQuery({
-    queryKey: ['inventory-items', search, selectedCategory],
-    queryFn: () =>
-      inventoryItemService.getAll({
-        search: search || undefined,
-        categoryId: selectedCategory || undefined,
-      }),
+    queryKey: ['inventory-items', search, selectedCategory, effectiveNodoId ?? 'all'],
+    queryFn: () => inventoryItemService.getAll({
+      search: search || undefined,
+      categoryId: selectedCategory || undefined,
+      nodoId: effectiveNodoId,
+    }),
   });
 
   const summary = summaryQuery.data;
-
-  const items = (itemsQuery.data ?? []) as any[]; 
+  const items = (itemsQuery.data ?? []) as any[];
   const { paginated, PaginationUI } = usePagination(items, 10);
-  
+
+  // ── Textos del header según rol ───────────────────────────
+  const headerTitle = isGlobalRole
+    ? (selectedNodoId ? `Inventario — ${selectedNodoName}` : 'Inventario — Todos los nodos')
+    : `Inventario — ${user?.nodoName ?? 'Mi nodo'}`;
+
+  const headerSub = isGlobalRole
+    ? (selectedNodoId
+        ? `Equipos y materiales del nodo ${selectedNodoName}`
+        : 'Vista consolidada de todos los nodos del sistema')
+    : (user?.nodoId
+        ? `Equipos y materiales del nodo ${user.nodoName ?? ''}`
+        : 'Tu cuenta no tiene un nodo asignado — contacta al administrador');
 
   return (
     <div className="space-y-6">
@@ -86,19 +126,67 @@ export default function InventoryPage() {
           <p className="text-xs font-mono text-[#555] uppercase tracking-widest mb-1">
             // MÓDULO DE INVENTARIO
           </p>
-          <h1 className="text-2xl font-bold text-white">Inventario del Nodo</h1>
-          <p className="text-[#666] text-sm mt-1">
-            Equipos, materiales y recursos del nodo Arboletes
+          <h1 className="text-2xl font-bold text-white">{headerTitle}</h1>
+          <p className={`text-sm mt-1 ${!isGlobalRole && !user?.nodoId ? 'text-yellow-500' : 'text-[#666]'}`}>
+            {headerSub}
           </p>
         </div>
-        <button
-          onClick={() => navigate('/inventario/nuevo')}
-          className="flex items-center gap-2 bg-[#FF6B2B] hover:bg-[#e55c20] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
-        >
-          <Plus size={16} />
-          Agregar ítem
-        </button>
+        {canAddInventory && (
+          <button
+            onClick={() => navigate('/inventario/nuevo')}
+            className="flex items-center gap-2 bg-[#FF6B2B] hover:bg-[#e55c20] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+          >
+            <Plus size={16} />
+            Agregar ítem
+          </button>
+        )}
       </div>
+
+      {/* Selector de nodos (solo roles globales) */}
+      {isGlobalRole && (
+        <div className="flex gap-2 flex-wrap items-center">
+          <MapPin size={13} className="text-[#555]" />
+          <button
+            onClick={() => setSelectedNodoId(undefined)}
+            className={`px-3 py-1.5 text-xs rounded-lg border font-mono transition-colors ${
+              !selectedNodoId
+                ? 'bg-[#FF6B2B]/10 border-[#FF6B2B]/30 text-[#FF6B2B]'
+                : 'bg-[#111] border-[#2A2A2A] text-[#555] hover:text-white hover:border-[#444]'
+            }`}
+          >
+            Todos
+          </button>
+          {nodosQuery.isLoading && (
+            <Loader2 size={14} className="animate-spin text-[#555]" />
+          )}
+          {nodosQuery.data?.map(nodo => (
+            <button
+              key={nodo.nodoId}
+              onClick={() => { setSelectedNodoId(nodo.nodoId); setSelectedCategory(''); }}
+              className={`px-3 py-1.5 text-xs rounded-lg border font-mono transition-colors ${
+                selectedNodoId === nodo.nodoId
+                  ? 'bg-[#FF6B2B]/10 border-[#FF6B2B]/30 text-[#FF6B2B]'
+                  : 'bg-[#111] border-[#2A2A2A] text-[#555] hover:text-white hover:border-[#444]'
+              }`}
+            >
+              {nodo.nodoName}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Advertencia: usuario sin nodo asignado */}
+      {!isGlobalRole && !user?.nodoId && (
+        <div className="flex items-center gap-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-5 py-4">
+          <AlertTriangle size={18} className="text-yellow-500 flex-shrink-0" />
+          <div>
+            <p className="text-yellow-400 text-sm font-medium">Sin nodo asignado</p>
+            <p className="text-yellow-600 text-xs mt-0.5">
+              Tu cuenta no tiene un nodo asignado. Contacta al administrador para que te asigne uno.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       {summaryQuery.isLoading ? (
@@ -117,32 +205,28 @@ export default function InventoryPage() {
             value={summary?.total_units ?? '—'}
             sub={`${summary?.total_items ?? 0} modelos`}
             color="text-white"
-            bg="bg-[#1A1A1A]"
             border="border-[#2A2A2A]"
           />
           <StatCard
             label="Disponibles"
             value={summary?.disponible ?? '—'}
             color="text-green-400"
-            bg="bg-green-400/10"
             border="border-green-400/20"
           />
           <StatCard
             label="En préstamo"
             value={summary?.en_prestamo ?? '—'}
             color="text-blue-400"
-            bg="bg-blue-400/10"
             border="border-blue-400/20"
           />
           <StatCard
             label="Con problemas"
             value={
-              ((parseInt(summary?.malo ?? '0')) +
-                (parseInt(summary?.dado_de_baja ?? '0')))
+              (parseInt(summary?.malo ?? '0')) +
+              (parseInt(summary?.dado_de_baja ?? '0'))
             }
             sub="Malo + Dado de baja"
             color="text-red-400"
-            bg="bg-red-400/10"
             border="border-red-400/20"
           />
         </div>
@@ -150,7 +234,6 @@ export default function InventoryPage() {
 
       {/* Filtros */}
       <div className="flex flex-col sm:flex-row gap-3">
-        {/* Búsqueda */}
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
           <input
@@ -161,8 +244,6 @@ export default function InventoryPage() {
             className="w-full bg-[#111] border border-[#2A2A2A] rounded-lg pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-[#555] outline-none focus:border-[#FF6B2B] transition-colors"
           />
         </div>
-
-        {/* Filtro por categoría */}
         <select
           value={selectedCategory}
           onChange={(e) => setSelectedCategory(e.target.value)}
@@ -175,8 +256,6 @@ export default function InventoryPage() {
             </option>
           ))}
         </select>
-
-        {/* Refresh */}
         <button
           onClick={() => itemsQuery.refetch()}
           className="p-2.5 bg-[#111] border border-[#2A2A2A] rounded-lg text-[#555] hover:text-white transition-colors"
@@ -205,9 +284,13 @@ export default function InventoryPage() {
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Package size={40} className="text-[#333] mb-3" />
             <p className="text-[#555] text-sm">
-              {search ? 'No se encontraron resultados' : 'No hay ítems registrados'}
+              {search
+                ? 'No se encontraron resultados'
+                : !isGlobalRole && !user?.nodoId
+                  ? 'Asigna un nodo a tu cuenta para ver inventario'
+                  : 'No hay ítems registrados en este nodo'}
             </p>
-            {!search && (
+            {canAddInventory && !search && (isGlobalRole || hasNodo) && (
               <button
                 onClick={() => navigate('/inventario/nuevo')}
                 className="mt-4 text-[#FF6B2B] text-sm hover:underline"
@@ -233,12 +316,9 @@ export default function InventoryPage() {
               </thead>
               <tbody>
                 {paginated.map((item: any) => {
-                  const damaged =
-                    (item as unknown as Record<string, number>).damagedUnits ?? 0;
-                  const total =
-                    (item as unknown as Record<string, number>).totalUnits ?? 0;
-                  const available =
-                    (item as unknown as Record<string, number>).availableUnits ?? 0;
+                  const damaged = (item as any).damagedUnits ?? 0;
+                  const total   = (item as any).totalUnits ?? 0;
+                  const available = (item as any).availableUnits ?? 0;
                   const onLoan = total - available - damaged;
 
                   return (
@@ -246,7 +326,6 @@ export default function InventoryPage() {
                       key={item.id}
                       className="border-b border-[#1A1A1A] hover:bg-[#161616] transition-colors group"
                     >
-                      {/* Ítem */}
                       <td className="px-5 py-3.5">
                         <div className="font-medium text-white">{item.name}</div>
                         {(item.brand || item.model) && (
@@ -255,31 +334,19 @@ export default function InventoryPage() {
                           </div>
                         )}
                       </td>
-
-                      {/* Categoría */}
                       <td className="px-5 py-3.5">
                         <span className="inline-flex items-center gap-1.5 text-xs text-[#888] bg-[#1A1A1A] px-2.5 py-1 rounded-full border border-[#2A2A2A]">
                           <span>{item.category?.icon}</span>
                           <span>{item.category?.name}</span>
                         </span>
                       </td>
-
-                      {/* Total */}
-                      <td className="px-5 py-3.5 font-mono font-bold text-white">
-                        {total}
-                      </td>
-
-                      {/* Disponibles */}
+                      <td className="px-5 py-3.5 font-mono font-bold text-white">{total}</td>
                       <td className="px-5 py-3.5">
                         <span className="font-mono text-green-400">{available}</span>
                       </td>
-
-                      {/* En préstamo */}
                       <td className="px-5 py-3.5">
                         <span className="font-mono text-blue-400">{onLoan > 0 ? onLoan : '—'}</span>
                       </td>
-
-                      {/* Estado (alerta si hay dañados) */}
                       <td className="px-5 py-3.5">
                         {damaged > 0 ? (
                           <span className="inline-flex items-center gap-1 text-xs text-red-400 bg-red-400/10 px-2 py-0.5 rounded-full border border-red-400/20">
@@ -293,21 +360,24 @@ export default function InventoryPage() {
                           </span>
                         )}
                       </td>
-
-                      {/* Acción */}
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-2">
-                          <button onClick={() => setEditingItemId(item.id as string)}
-                            className="p-1.5 text-[#555] hover:text-[#FF6B2B] hover:bg-[#FF6B2B]/10 rounded transition-colors" title="Editar ítem">
-                            <Pencil size={13} />
+                          {canAddInventory && (
+                            <button
+                              onClick={() => setEditingItemId(item.id as string)}
+                              className="p-1.5 text-[#555] hover:text-[#FF6B2B] hover:bg-[#FF6B2B]/10 rounded transition-colors"
+                              title="Editar ítem"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => navigate(`/inventario/${item.id}`)}
+                            className="flex items-center gap-1 text-xs text-[#555] group-hover:text-[#FF6B2B] transition-colors"
+                          >
+                            Ver unidades
+                            <ArrowUpRight size={12} />
                           </button>
-                        <button
-                          onClick={() => navigate(`/inventario/${item.id}`)}
-                          className="flex items-center gap-1 text-xs text-[#555] group-hover:text-[#FF6B2B] transition-colors"
-                        >
-                          Ver unidades
-                          <ArrowUpRight size={12} />
-                        </button>
                         </div>
                       </td>
                     </tr>
@@ -330,7 +400,6 @@ export default function InventoryPage() {
           onClose={() => { setEditingItemId(null); itemsQuery.refetch(); }}
         />
       )}
-
     </div>
   );
 }

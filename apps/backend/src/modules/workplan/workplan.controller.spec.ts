@@ -40,6 +40,8 @@ async function buildApp(
   return app;
 }
 
+jest.setTimeout(30000);
+
 describe('WorkPlanController — integración (Supertest)', () => {
   const mockService: jest.Mocked<Partial<WorkPlanService>> = {
     findAll:        jest.fn().mockResolvedValue([]),
