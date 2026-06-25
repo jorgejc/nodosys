@@ -43,7 +43,7 @@ export class UpdateUserDto {
   role?: UserRole;
  
   @ApiPropertyOptional()
-  @IsUUID() @IsOptional()
+  @IsUUID('loose' as any) @IsOptional()
   nodoId?: string;
 
   @ApiPropertyOptional()

@@ -59,7 +59,7 @@ export class CreateInventoryItemDto {
   trackByUnit?: boolean;
  
   @ApiPropertyOptional({ description: 'ID del nodo al que pertenece' })
-  @IsUUID() @IsOptional()
+  @IsUUID('loose' as any) @IsOptional()
   nodoId?: string;
 }
 

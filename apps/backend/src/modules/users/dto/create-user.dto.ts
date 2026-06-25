@@ -41,7 +41,7 @@ export class CreateUserDto {
   role?: UserRole;
  
   @ApiPropertyOptional()
-  @IsUUID() @IsOptional()
+  @IsUUID('loose' as any) @IsOptional()
   nodoId?: string;
 
   @ApiPropertyOptional()
