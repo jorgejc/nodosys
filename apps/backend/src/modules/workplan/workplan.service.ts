@@ -32,6 +32,9 @@ export class WorkPlanService {
   // ── Puede el usuario ver este plan? ──────────────────────
   // Requiere que plan.user esté cargado para la verificación por nodo.
   private canView(plan: WorkPlan, user: User): boolean {
+    // Regla universal: siempre puede ver su propio plan
+    if (plan.userId === user.id) return true;
+
     switch (user.role) {
       case UserRole.ADMIN:
       case UserRole.VICERRECTOR_EXTENSION:
@@ -45,10 +48,10 @@ export class WorkPlanService {
       case UserRole.ENLACE:
       case UserRole.MONITOR:
       case UserRole.AUXILIAR:
-        return !!user.nodoId && (plan.user?.nodoId === user.nodoId || plan.userId === user.id);
+        // Ver planes de su nodo (el propio ya fue cubierto arriba)
+        return !!user.nodoId && plan.user?.nodoId === user.nodoId;
       default:
-        // DOCENTE: solo su propio plan
-        return plan.userId === user.id;
+        return false;
     }
   }
 

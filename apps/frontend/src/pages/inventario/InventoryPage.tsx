@@ -116,10 +116,10 @@ export default function InventoryPage() {
 
   const headerSub = isGlobalRole
     ? (selectedNodoId
-        ? `Equipos y materiales del nodo ${selectedNodoName}`
+        ? `Equipos y materiales del ${selectedNodoName}`
         : 'Vista consolidada de todos los nodos del sistema')
     : (hasNodo
-        ? `Equipos y materiales del nodo ${user?.nodoName ?? ''}`
+        ? `Equipos y materiales del ${user?.nodoName ?? ''}`
         : isNodoRole
           ? 'Tu cuenta no tiene un nodo asignado — contacta al administrador'
           : 'Módulo de inventario');
@@ -137,7 +137,7 @@ export default function InventoryPage() {
             {headerSub}
           </p>
         </div>
-        {canAddInventory && (
+        {canAddInventory && (isGlobalRole || hasNodo) && (
           <button
             onClick={() => navigate('/inventario/nuevo')}
             className="flex items-center gap-2 bg-[#FF6B2B] hover:bg-[#e55c20] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"

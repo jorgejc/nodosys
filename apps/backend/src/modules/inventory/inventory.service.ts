@@ -43,9 +43,28 @@ export class InventoryService {
   // CATEGORÍAS
   // ══════════════════════════════════════════════════════════
 
+  private readonly DEFAULT_CATEGORIES = [
+    { name: 'Equipos de cómputo',      icon: '💻', description: 'Computadores, tablets, periféricos y accesorios' },
+    { name: 'Mobiliario',              icon: '🪑', description: 'Mesas, sillas, estantes y enseres' },
+    { name: 'Material didáctico',      icon: '📚', description: 'Libros, guías, kits pedagógicos y manipulativos' },
+    { name: 'Equipos audiovisuales',   icon: '📽️', description: 'Proyectores, pantallas, micrófonos y altavoces' },
+    { name: 'Papelería y consumibles', icon: '📝', description: 'Resmas, marcadores, tóner y suministros de oficina' },
+    { name: 'Otros',                   icon: '📦', description: 'Elementos varios no clasificados' },
+  ];
+
   async getCategories(nodoId?: string): Promise<InventoryCategory[]> {
     const where = nodoId ? { nodoId } : {};
-    return this.categoryRepo.find({ where, order: { name: 'ASC' } });
+    const cats = await this.categoryRepo.find({ where, order: { name: 'ASC' } });
+
+    // Primera vez que este nodo accede: crear categorías base automáticamente
+    if (cats.length === 0 && nodoId) {
+      const defaults = this.categoryRepo.create(
+        this.DEFAULT_CATEGORIES.map(c => ({ ...c, nodoId })),
+      );
+      return this.categoryRepo.save(defaults);
+    }
+
+    return cats;
   }
 
   async createCategory(data: {
