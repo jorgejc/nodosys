@@ -5,15 +5,19 @@ import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { inventoryItemService, inventoryCategoryService } from '@/services/inventory.service';
+import { usersService } from '@/services/users.service';
+import { useAuthStore } from '@/stores/auth.store';
+
+const GLOBAL_ROLES = ['admin', 'vicerrector_extension', 'vicerrector_academico', 'equipo_extension', 'decano', 'coordinador'];
 
 const schema = z.object({
   name:        z.string().min(2, 'El nombre es obligatorio'),
   categoryId:  z.string().uuid('Selecciona una categoría válida'),
+  nodoId:      z.string().uuid().optional(),
   brand:       z.string().optional(),
   model:       z.string().optional(),
   description: z.string().optional(),
   trackByUnit: z.boolean().default(true),
-  notes:       z.string().optional(),
   referenceUrl: z.string().url('Introduce una URL válida').optional().or(z.literal('')),
   howToUse:     z.string().optional(),
 });
@@ -23,19 +27,37 @@ type FormData = z.infer<typeof schema>;
 export default function NewInventoryItemPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const isGlobalRole = GLOBAL_ROLES.includes(user?.role ?? '');
 
-  const categoriesQuery = useQuery({
-    queryKey: ['inventory-categories'],
-    queryFn: () => inventoryCategoryService.getAll(),
+  const nodosQuery = useQuery({
+    queryKey: ['nodos'],
+    queryFn: () => usersService.getNodos(),
+    enabled: isGlobalRole,
   });
 
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { trackByUnit: true },
   });
 
+  const selectedNodoId = watch('nodoId');
+
+  const categoriesQuery = useQuery({
+    queryKey: ['inventory-categories', selectedNodoId ?? user?.nodoId],
+    queryFn: () => inventoryCategoryService.getAll(isGlobalRole ? selectedNodoId : undefined),
+  });
+
   const mutation = useMutation({
-    mutationFn: (data: FormData) => inventoryItemService.create(data as never),
+    mutationFn: (data: FormData) => {
+      const payload = {
+        ...data,
+        // Para roles globales: nodoId seleccionado; para roles nodo: el backend lo toma del JWT
+        nodoId: isGlobalRole ? (data.nodoId ?? undefined) : undefined,
+        referenceUrl: data.referenceUrl || undefined,
+      };
+      return inventoryItemService.create(payload as never);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inventory-items'] });
       navigate('/inventario');
@@ -65,6 +87,28 @@ export default function NewInventoryItemPage() {
         {mutation.error && (
           <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-400 text-sm">
             {(mutation.error as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Error al crear el ítem'}
+          </div>
+        )}
+
+        {/* Selector de nodo (solo para roles globales) */}
+        {isGlobalRole && (
+          <div>
+            <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">
+              Nodo *
+            </label>
+            <select
+              value={selectedNodoId ?? ''}
+              onChange={(e) => {
+                setValue('nodoId', e.target.value || undefined);
+                setValue('categoryId', '');
+              }}
+              className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-4 py-2.5 text-sm text-white outline-none focus:border-[#FF6B2B]"
+            >
+              <option value="">Selecciona un nodo...</option>
+              {nodosQuery.data?.map((n) => (
+                <option key={n.nodoId} value={n.nodoId}>{n.nodoName}</option>
+              ))}
+            </select>
           </div>
         )}
 

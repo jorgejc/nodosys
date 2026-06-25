@@ -123,6 +123,10 @@ export class InventoryController {
     @Body() dto: CreateInventoryItemDto,
     @CurrentUser() user: User,
   ) {
+    // Para roles de nodo: tomar nodoId del JWT si el form no lo envía
+    if (!dto.nodoId && !this.globalRoles.includes(user.role) && user.nodoId) {
+      dto.nodoId = user.nodoId;
+    }
     return this.inventoryService.createItem(dto, user.id);
   }
 

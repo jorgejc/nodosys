@@ -8,9 +8,6 @@ export class Nodo {
   @Column({ type: 'varchar', length: 200, nullable: true })
   name: string | null;
 
-  @Column({ default: true })
-  active: boolean;
-
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

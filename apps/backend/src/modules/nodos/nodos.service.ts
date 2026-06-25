@@ -11,10 +11,7 @@ export class NodosService {
   ) {}
 
   async findAll(): Promise<{ nodoId: string; nodoName: string }[]> {
-    const nodos = await this.repo.find({
-      where: { active: true },
-      order: { name: 'ASC' },
-    });
+    const nodos = await this.repo.find({ order: { name: 'ASC' } });
     return nodos
       .filter(n => n.name)
       .map(n => ({ nodoId: n.id, nodoName: n.name! }));
