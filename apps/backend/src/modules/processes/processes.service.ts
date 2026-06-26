@@ -61,10 +61,15 @@ export class ProcessesService {
   }
 
   async findOne(id: string, user: User): Promise<Process> {
-    const process = await this.repo.findOne({
-      where: { id },
-      relations: ['creator'],
-    });
+    const process = await this.repo.createQueryBuilder('p')
+      .leftJoinAndSelect('p.creator', 'creator')
+      .select([
+        'p.id', 'p.name', 'p.description', 'p.type', 'p.status',
+        'p.nodoId', 'p.workPlanTaskId', 'p.createdBy', 'p.createdAt', 'p.updatedAt',
+        'creator.id', 'creator.name', 'creator.email',
+      ])
+      .where('p.id = :id', { id })
+      .getOne();
     if (!process) throw new NotFoundException('Proceso no encontrado');
     if (!this.canAccess(process, user)) throw new ForbiddenException();
     return process;
