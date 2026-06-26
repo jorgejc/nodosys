@@ -32,6 +32,9 @@ export class ActivityRequest {
   @Column({ name: 'axis_activity_id', type: 'uuid', nullable: true })
   axisActivityId: string | null;
 
+  @Column({ name: 'process_id', type: 'uuid', nullable: true })
+  processId: string | null;
+
   @Column({ type: 'varchar', length: 300 })
   title: string;
 

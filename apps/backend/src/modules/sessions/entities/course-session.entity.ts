@@ -36,6 +36,9 @@ export class CourseSession {
   @Column({ name: 'total_registered', default: 0 })
   totalRegistered: number;
 
+  @Column({ name: 'process_id', type: 'uuid', nullable: true })
+  processId: string | null;
+
   @Column({ name: 'created_by', type: 'uuid' })
   createdBy: string;
 
