@@ -18,6 +18,7 @@ import { WorkPlanModule } from './modules/workplan/workplan.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { NodosModule } from './modules/nodos/nodos.module';
+import { SessionsModule } from './modules/sessions/sessions.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { NodosModule } from './modules/nodos/nodos.module';
     ReportsModule,
     ActivitiesModule,
     NodosModule,
+    SessionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

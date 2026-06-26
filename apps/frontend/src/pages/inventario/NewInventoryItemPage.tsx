@@ -36,7 +36,7 @@ export default function NewInventoryItemPage() {
     enabled: isGlobalRole,
   });
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { trackByUnit: true },
   });

@@ -19,6 +19,8 @@ import UsersPage from '@/pages/usuarios/UsersPage';
 import ActivitiesPage from '@/pages/actividades/ActivitiesPage';
 import NewActivityPage from '@/pages/actividades/NewActivityPage';
 import ActivityDetailPage from '@/pages/actividades/ActivityDetailPage';
+import SessionFormPage from '@/pages/actividades/SessionFormPage';
+import SessionDetailPage from '@/pages/actividades/SessionDetailPage';
 
 // // Por ahora una página temporal de "estamos construyendo"
 // function ComingSoon({ name }: { name: string }) {
@@ -44,9 +46,12 @@ export default function App() {
         <Route path="/plan-trabajo/:id"   element={<WorkPlanDetailPage />} />
         <Route path="/reportes/*"        element={<ReportesPage />} />
         <Route path="/usuarios/*"        element={<UsersPage />}/>
-        <Route path="/actividades"        element={<ActivitiesPage />} />
-        <Route path="/actividades/nueva"  element={<NewActivityPage />} />
-        <Route path="/actividades/:id"    element={<ActivityDetailPage />} />
+        <Route path="/actividades"                              element={<ActivitiesPage />} />
+        <Route path="/actividades/nueva"                        element={<NewActivityPage />} />
+        <Route path="/actividades/:id"                          element={<ActivityDetailPage />} />
+        <Route path="/actividades/:id/sesiones/nueva"           element={<SessionFormPage />} />
+        <Route path="/actividades/:id/sesiones/:sid"            element={<SessionDetailPage />} />
+        <Route path="/actividades/:id/sesiones/:sid/editar"     element={<SessionFormPage />} />
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
