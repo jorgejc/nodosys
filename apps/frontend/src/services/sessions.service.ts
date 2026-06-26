@@ -68,6 +68,12 @@ export const sessionsService = {
   getByActivity: (activityId: string) =>
     api.get<CourseSession[]>(`/sessions/activity/${activityId}`).then((r) => r.data),
 
+  getByProcess: (processId: string) =>
+    api.get<CourseSession[]>(`/sessions/process/${processId}`).then((r) => r.data),
+
+  createForProcess: (processId: string, data: CreateSessionPayload) =>
+    api.post<CourseSession>(`/sessions/process/${processId}`, data).then((r) => r.data),
+
   getById: (id: string) =>
     api.get<CourseSession>(`/sessions/${id}`).then((r) => r.data),
 

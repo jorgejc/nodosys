@@ -77,7 +77,7 @@ export class ActivitiesService {
   // SOLICITUDES
   // ══════════════════════════════════════════════════════════
 
-  async findAll(user: User, filters?: { status?: string; userId?: string }): Promise<ActivityRequest[]> {
+  async findAll(user: User, filters?: { status?: string; userId?: string; processId?: string }): Promise<ActivityRequest[]> {
     const qb = this.requestRepo
       .createQueryBuilder('r')
       .leftJoinAndSelect('r.user', 'u')
@@ -86,16 +86,17 @@ export class ActivitiesService {
     if (this.isReviewer(user)) {
       // Roles globales: ven todas las actividades
     } else if (this.NODO_ROLES.includes(user.role) && user.nodoId) {
-      // ENLACE/MONITOR/AUXILIAR: solo actividades de usuarios de su nodo
       qb.where('u.nodo_id = :nodoId', { nodoId: user.nodoId });
     } else {
-      // DOCENTE u otros sin nodo: solo las propias
       qb.where('r.user_id = :uid', { uid: user.id });
     }
 
     if (filters?.status) qb.andWhere('r.status = :status', { status: filters.status });
     if (filters?.userId && this.isReviewer(user)) {
       qb.andWhere('r.user_id = :userId', { userId: filters.userId });
+    }
+    if (filters?.processId) {
+      qb.andWhere('r.process_id = :processId', { processId: filters.processId });
     }
 
     return qb.getMany();

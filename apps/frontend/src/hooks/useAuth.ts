@@ -58,7 +58,11 @@ export function useAuth() {
   // ── Actividades ────────────────────────────────────────
   const canViewAllActivities = hasRole('admin','vicerrector_extension','equipo_extension');
   const canReviewActivities  = hasRole('admin','vicerrector_extension','decano');
- 
+
+  // ── Procesos ───────────────────────────────────────────
+  const canViewProcesos  = hasRole('admin','vicerrector_extension','vicerrector_academico','equipo_extension','decano','coordinador','enlace','docente');
+  const canCreateProceso = hasRole('admin','vicerrector_extension','vicerrector_academico','equipo_extension','decano','coordinador','enlace','docente');
+
   // ── Usuarios ───────────────────────────────────────────
   const canManageUsers = hasRole('admin','enlace','vicerrector_extension','decano','coordinador');
   const canCreateUsers = hasRole('admin','enlace');
@@ -75,6 +79,8 @@ export function useAuth() {
     canViewOwnPlan, canViewAllPlans, canViewFacultyPlans, canEditPlan, canAddDeanObs,
     // Actividades
     canViewAllActivities, canReviewActivities,
+    // Procesos
+    canViewProcesos, canCreateProceso,
     // Usuarios
     canManageUsers, canCreateUsers, canAssignRoles,
     // Reportes

@@ -12,8 +12,8 @@ export class CourseSession {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'activity_id', type: 'uuid' })
-  activityId: string;
+  @Column({ name: 'activity_id', type: 'uuid', nullable: true })
+  activityId: string | null;
 
   @Column({ name: 'session_number', default: 1 })
   sessionNumber: number;

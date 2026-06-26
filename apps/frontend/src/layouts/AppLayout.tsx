@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ClipboardList, FileText,
-  Users, LogOut, Menu, X, ChevronRight, Zap,
+  Users, LogOut, Menu, X, ChevronRight, Zap, Layers,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useAuth } from '@/hooks/useAuth';
@@ -22,9 +22,9 @@ import { useAuth } from '@/hooks/useAuth';
 export default function AppLayout() {
   const navigate  = useNavigate();
   const { user, logout } = useAuthStore();
-  const { canViewInventory, canEditInventory, canAddInventory,
+  const { canViewInventory, canAddInventory,
           canViewOwnPlan, canViewAllPlans, canViewReports,
-          canManageUsers } = useAuth();
+          canManageUsers, canViewProcesos } = useAuth();
   const [open, setOpen] = useState(true);
 
   const handleLogout = () => { logout(); navigate('/login'); };
@@ -39,6 +39,7 @@ export default function AppLayout() {
     { to: '/reportes', icon: FileText, label: 'Reportes', sub: 'PDF y Excel', show: canViewReports },
     { to: '/usuarios', icon: Users, label: 'Usuarios', sub: 'Gestión de accesos', show: canManageUsers },
     { to: '/actividades', icon: Zap, label: 'Actividades', sub: 'Viáticos y solicitudes', show: true },
+    { to: '/procesos', icon: Layers, label: 'Procesos', sub: 'Cursos, clubes y talleres', show: canViewProcesos },
   ].filter(n => n.show);
 
   return (

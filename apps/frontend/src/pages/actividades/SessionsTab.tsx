@@ -12,9 +12,9 @@ function formatDate(d: string) {
   });
 }
 
-function SessionCard({ session, activityId, canDelete, onDelete }: {
+function SessionCard({ session, basePath, canDelete, onDelete }: {
   session: CourseSession;
-  activityId: string;
+  basePath: string;
   canDelete: boolean;
   onDelete: (id: string) => void;
 }) {
@@ -25,7 +25,7 @@ function SessionCard({ session, activityId, canDelete, onDelete }: {
 
   return (
     <div
-      onClick={() => navigate(`/actividades/${activityId}/sesiones/${session.id}`)}
+      onClick={() => navigate(`${basePath}/sesiones/${session.id}`)}
       className="bg-[#111] border border-[#2A2A2A] rounded-xl p-5 hover:border-[#FF6B2B]/40 cursor-pointer transition-all group"
     >
       <div className="flex items-start justify-between gap-3">
@@ -90,25 +90,32 @@ function SessionCard({ session, activityId, canDelete, onDelete }: {
   );
 }
 
-interface Props {
-  activityId: string;
-  activityTitle: string;
-}
+type Props =
+  | { activityId: string; activityTitle: string; processId?: never; processTitle?: never }
+  | { processId: string; processTitle: string; activityId?: never; activityTitle?: never };
 
-export default function SessionsTab({ activityId, activityTitle }: Props) {
+export default function SessionsTab(props: Props) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { isAdmin, isVicerrector } = useAuth();
   const isDirector = isAdmin || isVicerrector;
 
+  const isProcessMode = !!props.processId;
+  const contextId     = isProcessMode ? props.processId! : props.activityId!;
+  const basePath      = isProcessMode ? `/procesos/${contextId}` : `/actividades/${contextId}`;
+  const queryKey      = isProcessMode ? ['sessions', 'process', contextId] : ['sessions', contextId];
+
   const q = useQuery({
-    queryKey: ['sessions', activityId],
-    queryFn: () => sessionsService.getByActivity(activityId),
+    queryKey,
+    queryFn: () =>
+      isProcessMode
+        ? sessionsService.getByProcess(contextId)
+        : sessionsService.getByActivity(contextId),
   });
 
   const deleteM = useMutation({
     mutationFn: (id: string) => sessionsService.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions', activityId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey }),
   });
 
   const sessions = q.data ?? [];
@@ -129,12 +136,12 @@ export default function SessionsTab({ activityId, activityTitle }: Props) {
           <h2 className="text-white font-semibold text-sm">Bitácora de sesiones</h2>
           <p className="text-xs text-[#555] mt-0.5">
             {sessions.length === 0
-              ? 'Registra la primera sesión de esta actividad'
+              ? 'Registra la primera sesión'
               : `${sessions.length} sesión${sessions.length !== 1 ? 'es' : ''} registrada${sessions.length !== 1 ? 's' : ''}`}
           </p>
         </div>
         <button
-          onClick={() => navigate(`/actividades/${activityId}/sesiones/nueva`)}
+          onClick={() => navigate(`${basePath}/sesiones/nueva`)}
           className="flex items-center gap-1.5 text-xs bg-[#FF6B2B]/10 border border-[#FF6B2B]/30 text-[#FF6B2B] hover:bg-[#FF6B2B]/20 px-3 py-2 rounded-lg transition-colors"
         >
           <Plus size={13} /> Nueva sesión
@@ -150,7 +157,7 @@ export default function SessionsTab({ activityId, activityTitle }: Props) {
             Documenta cada encuentro con los 3 momentos pedagógicos: Explorar, Crear y Consolidar.
           </p>
           <button
-            onClick={() => navigate(`/actividades/${activityId}/sesiones/nueva`)}
+            onClick={() => navigate(`${basePath}/sesiones/nueva`)}
             className="mt-4 text-[#FF6B2B] text-sm hover:underline"
           >
             Registrar primera sesión →
@@ -162,7 +169,7 @@ export default function SessionsTab({ activityId, activityTitle }: Props) {
             <SessionCard
               key={s.id}
               session={s}
-              activityId={activityId}
+              basePath={basePath}
               canDelete={isDirector}
               onDelete={(id) => deleteM.mutate(id)}
             />
@@ -170,11 +177,11 @@ export default function SessionsTab({ activityId, activityTitle }: Props) {
         </div>
       )}
 
-      {/* Enlace al reporte de asistencia */}
-      {sessions.length > 0 && (
+      {/* Enlace al reporte de asistencia (solo en contexto de actividad) */}
+      {sessions.length > 0 && !isProcessMode && (
         <div className="pt-2 border-t border-[#1E1E1E]">
           <button
-            onClick={() => navigate(`/actividades/${activityId}/sesiones/asistencia`)}
+            onClick={() => navigate(`${basePath}/sesiones/asistencia`)}
             className="flex items-center gap-2 text-xs text-[#666] hover:text-white transition-colors"
           >
             <Users size={13} /> Ver reporte consolidado de asistencia

@@ -38,6 +38,22 @@ export class SessionsController {
     return this.svc.create(activityId, dto, user);
   }
 
+  @Get('process/:processId')
+  @ApiOperation({ summary: 'Listar sesiones de un proceso' })
+  findByProcess(@Param('processId', ParseUUIDPipe) processId: string) {
+    return this.svc.findByProcess(processId);
+  }
+
+  @Post('process/:processId')
+  @ApiOperation({ summary: 'Crear sesión bajo un proceso (sin actividad)' })
+  createForProcess(
+    @Param('processId', ParseUUIDPipe) processId: string,
+    @Body() dto: CreateSessionDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.svc.createForProcess(processId, dto, user);
+  }
+
   @Get('activity/:activityId/attendance')
   @ApiOperation({ summary: 'Reporte de asistencia consolidado por actividad' })
   attendanceReport(@Param('activityId', ParseUUIDPipe) activityId: string) {

@@ -27,12 +27,14 @@ export class ActivitiesController {
   @ApiOperation({ summary: 'Listar solicitudes (propias o todas si admin/decano)' })
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'userId', required: false })
+  @ApiQuery({ name: 'processId', required: false })
   findAll(
     @CurrentUser() user: User,
     @Query('status') status?: string,
     @Query('userId') userId?: string,
+    @Query('processId') processId?: string,
   ) {
-    return this.svc.findAll(user, { status, userId });
+    return this.svc.findAll(user, { status, userId, processId });
   }
 
   @Post()

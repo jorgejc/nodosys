@@ -137,6 +137,24 @@ export interface InventoryMovement {
   createdAt: string;
 }
 
+// ── Procesos ──────────────────────────────────────────────────────
+export type ProcessType   = 'curso' | 'club' | 'taller' | 'proceso';
+export type ProcessStatus = 'activo' | 'finalizado';
+
+export interface Process {
+  id: string;
+  name: string;
+  description: string | null;
+  type: ProcessType;
+  status: ProcessStatus;
+  nodoId: string | null;
+  workPlanTaskId: string | null;
+  createdBy: string;
+  creator?: { id: string; name: string; email: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Plan de Trabajo ───────────────────────────────────────────────
 export type AxisType =
   | 'docencia_directa'
