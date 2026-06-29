@@ -12,6 +12,7 @@ import SessionsTab from '@/pages/actividades/SessionsTab';
 import type { ProcessType, ProcessStatus } from '@/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { loadInstitutionalAssets, getInstitutionalMargins, applyInstitutionalLayout } from '@/utils/pdfLayout';
 
 const TYPE_LABELS: Record<ProcessType, string> = {
   curso:   'Curso',
@@ -52,46 +53,23 @@ const MOMENT_LABELS: Record<string, string> = {
   consolidar: '3. CONSOLIDAR',
 };
 
-function ensureSpace(doc: jsPDF, y: number, needed: number, margin: number): number {
-  if (y + needed > 278) {
+function ensureSpace(doc: jsPDF, y: number, needed: number, topMargin: number, breakY = 278): number {
+  if (y + needed > breakY) {
     doc.addPage();
-    return margin;
+    return topMargin;
   }
   return y;
 }
 
-function exportConsolidatedPDF(report: ProcessReport) {
+async function exportConsolidatedPDF(report: ProcessReport): Promise<void> {
+  const assets  = await loadInstitutionalAssets();
+  const margins = getInstitutionalMargins(assets);
   const { process: p, sessions, consolidatedAttendance, totalSessions, dateRange } = report;
   const doc    = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
   const W      = 210;
-  const margin = 15;
-  let y        = margin;
-
-  const addPageHeader = () => {
-    doc.setFillColor(255, 107, 43);
-    doc.rect(0, 0, W, 18, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('IU DIGITAL — INSTITUCIÓN UNIVERSITARIA DIGITAL DE ANTIOQUIA', margin, 7);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Vicerrectoría de Extensión y Proyección Social', margin, 13);
-    doc.setTextColor(0, 0, 0);
-  };
-
-  const addFooter = () => {
-    const today = new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'italic');
-    doc.setTextColor(150, 150, 150);
-    doc.text(`Generado el ${today} — NodoSys / IU Digital`, W / 2, 291, { align: 'center' });
-    doc.setTextColor(0, 0, 0);
-  };
-
-  // Página 1: encabezado + datos del proceso
-  addPageHeader();
-  y = 26;
+  const margin = margins.left;
+  const pbY    = 297 - margins.bottom - 5; // page-break threshold
+  let y        = margins.top;
 
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
@@ -126,13 +104,13 @@ function exportConsolidatedPDF(report: ProcessReport) {
       2: { fontStyle: 'bold', fillColor: [245, 245, 245], cellWidth: 30 },
       3: { cellWidth: 60 },
     },
-    margin: { left: margin, right: margin },
+    margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
   });
   y = (doc as any).lastAutoTable.finalY + 8;
 
   // ── Sesiones ────────────────────────────────────────────
   for (const session of sessions) {
-    y = ensureSpace(doc, y, 50, margin);
+    y = ensureSpace(doc, y, 50, margins.top, pbY);
 
     // Franja de encabezado de sesión
     doc.setFillColor(255, 107, 43);
@@ -161,7 +139,7 @@ function exportConsolidatedPDF(report: ProcessReport) {
           2: { fontStyle: 'bold', fillColor: [250, 250, 250], cellWidth: 22 },
           3: { cellWidth: 64 },
         },
-        margin: { left: margin, right: margin },
+        margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
       });
       y = (doc as any).lastAutoTable.finalY + 3;
     }
@@ -191,27 +169,27 @@ function exportConsolidatedPDF(report: ProcessReport) {
         3: { cellWidth: 40 },
         4: { cellWidth: 14, halign: 'center' },
       },
-      margin: { left: margin, right: margin },
+      margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
     });
     y = (doc as any).lastAutoTable.finalY + 4;
 
     // Experiencia
     if (session.experience) {
-      y = ensureSpace(doc, y, 14, margin);
+      y = ensureSpace(doc, y, 14, margins.top, pbY);
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       doc.text('Descripción / Experiencia:', margin, y);
       y += 4;
       doc.setFont('helvetica', 'normal');
       const expLines = doc.splitTextToSize(session.experience, W - margin * 2);
-      y = ensureSpace(doc, y, expLines.length * 4, margin);
+      y = ensureSpace(doc, y, expLines.length * 4, margins.top, pbY);
       doc.text(expLines, margin, y);
       y += expLines.length * 4 + 4;
     }
 
     // Asistentes
     if ((session.attendees ?? []).length > 0) {
-      y = ensureSpace(doc, y, 20, margin);
+      y = ensureSpace(doc, y, 20, margins.top, pbY);
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       doc.text(`Asistentes (${session.attendees.length})`, margin, y);
@@ -228,14 +206,14 @@ function exportConsolidatedPDF(report: ProcessReport) {
           1: { cellWidth: 50 },
           2: { cellWidth: 25, halign: 'center' },
         },
-        margin: { left: margin, right: margin },
+        margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
       });
       y = (doc as any).lastAutoTable.finalY + 4;
     }
 
     // Evidencias
     if ((session.evidences ?? []).length > 0) {
-      y = ensureSpace(doc, y, 16, margin);
+      y = ensureSpace(doc, y, 16, margins.top, pbY);
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       doc.text(`Evidencias (${session.evidences.length})`, margin, y);
@@ -251,7 +229,7 @@ function exportConsolidatedPDF(report: ProcessReport) {
           0: { cellWidth: 55 },
           1: { cellWidth: 115, textColor: [0, 80, 200] },
         },
-        margin: { left: margin, right: margin },
+        margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
       });
       y = (doc as any).lastAutoTable.finalY + 4;
     }
@@ -262,8 +240,7 @@ function exportConsolidatedPDF(report: ProcessReport) {
   // ── Asistencia consolidada ───────────────────────────────
   if (consolidatedAttendance.length > 0) {
     doc.addPage();
-    addPageHeader();
-    y = 26;
+    y = margins.top;
 
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
@@ -298,7 +275,7 @@ function exportConsolidatedPDF(report: ProcessReport) {
         4: { cellWidth: 18, halign: 'center' },
         5: { cellWidth: 22, halign: 'center' },
       },
-      margin: { left: margin, right: margin },
+      margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
       didParseCell: (data) => {
         if (data.column.index === 4 && data.section === 'body') {
           const absences = parseInt(String(data.cell.raw), 10);
@@ -311,16 +288,7 @@ function exportConsolidatedPDF(report: ProcessReport) {
     });
   }
 
-  // Pie en todas las páginas
-  const totalPages = (doc as any).internal.getNumberOfPages();
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i);
-    addFooter();
-    doc.setFontSize(7);
-    doc.setTextColor(150, 150, 150);
-    doc.text(`${i} / ${totalPages}`, W - margin, 291, { align: 'right' });
-    doc.setTextColor(0, 0, 0);
-  }
+  applyInstitutionalLayout(doc, assets);
 
   const safeName = p.name.replace(/[^a-z0-9]/gi, '_').substring(0, 40);
   doc.save(`Bitacora_Proceso_${safeName}.pdf`);
@@ -416,7 +384,7 @@ export default function ProcesoDetailPage() {
     setGeneratingPDF(true);
     try {
       const report = await processesService.getReport(id!);
-      exportConsolidatedPDF(report);
+      await exportConsolidatedPDF(report);
     } catch (err) {
       console.error('Error generando bitácora consolidada:', err);
     } finally {

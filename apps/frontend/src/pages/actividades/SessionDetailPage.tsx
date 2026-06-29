@@ -10,6 +10,7 @@ import { sessionsService, type SessionAttendee, type SessionEvidence } from '@/s
 import { useAuth } from '@/hooks/useAuth';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { loadInstitutionalAssets, getInstitutionalMargins, applyInstitutionalLayout } from '@/utils/pdfLayout';
 
 // ── Helpers ───────────────────────────────────────────────
 function fmt(d: string) {
@@ -27,24 +28,14 @@ const MOMENT_META = {
 // ── PDF export ────────────────────────────────────────────
 type SessionData = Awaited<ReturnType<typeof sessionsService.getById>>;
 
-function exportPDF(session: SessionData, contextTitle: string, teacherName: string) {
+async function exportPDF(session: SessionData, contextTitle: string, teacherName: string): Promise<void> {
+  const assets  = await loadInstitutionalAssets();
+  const margins = getInstitutionalMargins(assets);
   const doc    = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
   const W      = 210;
-  const margin = 15;
-  let y        = margin;
-
-  // Encabezado institucional
-  doc.setFillColor(255, 107, 43);
-  doc.rect(0, 0, W, 18, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('IU DIGITAL — INSTITUCIÓN UNIVERSITARIA DIGITAL DE ANTIOQUIA', margin, 7);
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Vicerrectoría de Extensión y Proyección Social', margin, 13);
-  doc.setTextColor(0, 0, 0);
-  y = 26;
+  const margin = margins.left;
+  const pbY    = 297 - margins.bottom - 5; // page-break threshold
+  let y        = margins.top;
 
   // Título
   doc.setFontSize(14);
@@ -79,7 +70,7 @@ function exportPDF(session: SessionData, contextTitle: string, teacherName: stri
       2: { fontStyle: 'bold', fillColor: [245, 245, 245], cellWidth: 28 },
       3: { cellWidth: 60 },
     },
-    margin: { left: margin, right: margin },
+    margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
   });
   y = (doc as any).lastAutoTable.finalY + 6;
 
@@ -119,13 +110,13 @@ function exportPDF(session: SessionData, contextTitle: string, teacherName: stri
       3: { cellWidth: 34 },
       4: { cellWidth: 18, halign: 'center' },
     },
-    margin: { left: margin, right: margin },
+    margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
   });
   y = (doc as any).lastAutoTable.finalY + 6;
 
   // Experiencia / Descripción narrativa
   if (session.experience) {
-    if (y > 240) { doc.addPage(); y = margin; }
+    if (y > pbY) { doc.addPage(); y = margins.top; }
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.text('DESCRIPCIÓN / EXPERIENCIA DE LA SESIÓN', margin, y);
@@ -133,15 +124,14 @@ function exportPDF(session: SessionData, contextTitle: string, teacherName: stri
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     const expLines = doc.splitTextToSize(session.experience, W - margin * 2);
-    // Si no cabe en la página, saltar
-    if (y + expLines.length * 4.5 > 280) { doc.addPage(); y = margin; }
+    if (y + expLines.length * 4.5 > pbY) { doc.addPage(); y = margins.top; }
     doc.text(expLines, margin, y);
     y += expLines.length * 4.5 + 6;
   }
 
   // Lista de asistentes
   if (session.attendees.length > 0) {
-    if (y > 220) { doc.addPage(); y = margin; }
+    if (y > pbY - 20) { doc.addPage(); y = margins.top; }
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.text('LISTA DE ASISTENTES', margin, y);
@@ -167,7 +157,7 @@ function exportPDF(session: SessionData, contextTitle: string, teacherName: stri
         3: { cellWidth: 20, halign: 'center' },
         4: { cellWidth: 42 },
       },
-      margin: { left: margin, right: margin },
+      margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
     });
     y = (doc as any).lastAutoTable.finalY + 8;
   }
@@ -175,7 +165,7 @@ function exportPDF(session: SessionData, contextTitle: string, teacherName: stri
   // Evidencias
   const evidences = session.evidences ?? [];
   if (evidences.length > 0) {
-    if (y > 240) { doc.addPage(); y = margin; }
+    if (y > pbY) { doc.addPage(); y = margins.top; }
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.text('EVIDENCIAS', margin, y);
@@ -195,13 +185,13 @@ function exportPDF(session: SessionData, contextTitle: string, teacherName: stri
         0: { cellWidth: 55 },
         1: { cellWidth: 125, textColor: [0, 80, 200] },
       },
-      margin: { left: margin, right: margin },
+      margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
     });
     y = (doc as any).lastAutoTable.finalY + 8;
   }
 
   // Firmas
-  if (y > 250) { doc.addPage(); y = margin; }
+  if (y > pbY) { doc.addPage(); y = margins.top; }
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.line(margin, y + 10, margin + 60, y + 10);
@@ -211,13 +201,7 @@ function exportPDF(session: SessionData, contextTitle: string, teacherName: stri
   doc.setFont('helvetica', 'bold');
   doc.text(teacherName, margin, y + 19);
 
-  // Pie de página
-  const today = new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'italic');
-  doc.setTextColor(150, 150, 150);
-  doc.text(`Generado el ${today} — NodoSys / IU Digital`, W / 2, 290, { align: 'center' });
-
+  applyInstitutionalLayout(doc, assets);
   doc.save(`Bitacora_S${session.sessionNumber}_${session.date}.pdf`);
 }
 
@@ -373,8 +357,15 @@ export default function SessionDetailPage() {
   const { user, isAdmin, isVicerrector } = useAuth();
   const isDirector = isAdmin || isVicerrector;
 
-  const [showAddAttendee, setShowAddAttendee] = useState(false);
-  const [showAddEvidence, setShowAddEvidence] = useState(false);
+  const [showAddAttendee,  setShowAddAttendee]  = useState(false);
+  const [showAddEvidence,  setShowAddEvidence]  = useState(false);
+  const [generatingPDF,    setGeneratingPDF]    = useState(false);
+
+  async function handleExportPDF(s: NonNullable<typeof q.data>) {
+    setGeneratingPDF(true);
+    try { await exportPDF(s, s.topic ?? `Sesión ${s.sessionNumber}`, user?.name ?? 'Docente'); }
+    finally { setGeneratingPDF(false); }
+  }
 
   const q = useQuery({
     queryKey: ['session', sid],
@@ -449,10 +440,12 @@ export default function SessionDetailPage() {
           </div>
           <div className="flex gap-2 flex-shrink-0">
             <button
-              onClick={() => exportPDF(s, contextTitle, user?.name ?? 'Docente')}
-              className="flex items-center gap-1.5 text-xs bg-[#1A1A1A] border border-[#2A2A2A] text-[#888] hover:text-white px-3 py-2 rounded-lg transition-colors"
+              onClick={() => handleExportPDF(s)}
+              disabled={generatingPDF}
+              className="flex items-center gap-1.5 text-xs bg-[#1A1A1A] border border-[#2A2A2A] text-[#888] hover:text-white disabled:opacity-50 px-3 py-2 rounded-lg transition-colors"
             >
-              <Download size={13} /> Bitácora PDF
+              {generatingPDF ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              Bitácora PDF
             </button>
             {canEdit && (
               <button

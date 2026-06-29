@@ -4,9 +4,11 @@
  * pdfmake 0.2.x: usa new PdfPrinter(fonts) → createPdfKitDocument(docDef)
  * exceljs:       usa Workbook/Worksheet API con estilos completos
  */
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
+import * as fs from 'fs';
+import * as path from 'path';
 import { InventoryItem } from '../inventory/entities/inventory-item.entity';
 import { InventoryUnit } from '../inventory/entities/inventory-unit.entity';
 import { WorkPlan } from '../workplan/entities/work-plan.entity';
@@ -69,8 +71,52 @@ function buildPdf(docDefinition: object): Promise<Buffer> {
   });
 }
 
+// ── Asset loader ─────────────────────────────────────────
+function readPngBase64(filename: string): string {
+  const candidates = [
+    path.join(__dirname, '..', '..', 'assets', filename),
+    path.join(process.cwd(), 'src', 'assets', filename),
+    path.join(process.cwd(), 'apps', 'backend', 'src', 'assets', filename),
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        return `data:image/png;base64,${fs.readFileSync(p).toString('base64')}`;
+      }
+    } catch { /* try next */ }
+  }
+  return '';
+}
+
+function getPngRatio(filename: string, fallback: number): number {
+  const candidates = [
+    path.join(__dirname, '..', '..', 'assets', filename),
+    path.join(process.cwd(), 'src', 'assets', filename),
+    path.join(process.cwd(), 'apps', 'backend', 'src', 'assets', filename),
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        const buf = Buffer.alloc(24);
+        const fd = fs.openSync(p, 'r');
+        fs.readSync(fd, buf, 0, 24, 0);
+        fs.closeSync(fd);
+        return buf.readUInt32BE(20) / buf.readUInt32BE(16);
+      }
+    } catch { /* try next */ }
+  }
+  return fallback;
+}
+
 @Injectable()
-export class ReportsService {
+export class ReportsService implements OnModuleInit {
+  private readonly log = new Logger(ReportsService.name);
+
+  private headerBase64  = '';
+  private footerBase64  = '';
+  private headerRatio   = 106 / 794;
+  private footerRatio   = 114 / 857;
+
   constructor(
     @InjectRepository(InventoryItem)
     private readonly itemRepo: Repository<InventoryItem>,
@@ -83,6 +129,44 @@ export class ReportsService {
     @InjectRepository(AxisActivity)
     private readonly activityRepo: Repository<AxisActivity>,
   ) {}
+
+  onModuleInit() {
+    this.headerBase64 = readPngBase64('iudigital-header.png');
+    this.footerBase64 = readPngBase64('iudigital-footer.png');
+    this.headerRatio  = getPngRatio('iudigital-header.png', 106 / 794);
+    this.footerRatio  = getPngRatio('iudigital-footer.png', 114 / 857);
+    if (this.headerBase64) {
+      this.log.log(`Institutional images loaded — header ratio ${this.headerRatio.toFixed(4)}, footer ratio ${this.footerRatio.toFixed(4)}`);
+    } else {
+      this.log.warn('Institutional images NOT found — PDFs will use text headers');
+    }
+  }
+
+  private headerHPt(pageWidthPt: number) { return Math.ceil(this.headerRatio * pageWidthPt); }
+  private footerHPt(pageWidthPt: number) { return Math.ceil(this.footerRatio * pageWidthPt); }
+  private topMarginPt(pageWidthPt: number)    { return this.headerHPt(pageWidthPt) + 10; }
+  private bottomMarginPt(pageWidthPt: number) { return this.footerHPt(pageWidthPt) + 14; }
+
+  private makePdfHeader() {
+    if (!this.headerBase64) return undefined;
+    const ratio = this.headerRatio;
+    const data  = this.headerBase64;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (_p: number, _c: number, ps: any) => ({
+      image: data, width: ps.width, height: Math.ceil(ratio * ps.width), margin: [0, 0, 0, 0],
+    });
+  }
+
+  private makePdfFooter() {
+    if (!this.footerBase64) return undefined;
+    const ratio = this.footerRatio;
+    const data  = this.footerBase64;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (page: number, pages: number, ps: any) => ([
+      { text: `Página ${page} de ${pages}`, fontSize: 7, color: '#555555', alignment: 'right', margin: [0, 0, 10, 3] },
+      { image: data, width: ps.width, height: Math.ceil(ratio * ps.width), margin: [0, 0, 0, 0] },
+    ]);
+  }
 
   // ══════════════════════════════════════════════════════════
   // INVENTARIO → PDF
@@ -153,17 +237,17 @@ export class ReportsService {
 
     const docDef = {
       pageSize: 'LETTER',
-      pageMargins: [40, 55, 40, 45],
-      header: {
+      pageMargins: [40, this.topMarginPt(612), 40, this.bottomMarginPt(612)],
+      header: this.makePdfHeader() ?? {
         columns: [
           { text: `NODOSYS · IU DIGITAL · ${nodoLabel}`, fontSize: 8, color: '#888888', margin: [40, 15, 0, 0] },
           { text: `Generado: ${new Date().toLocaleDateString('es-CO')}`, fontSize: 8, color: '#888888', alignment: 'right', margin: [0, 15, 40, 0] },
         ],
       },
-      footer: (page: number, pages: number) => ({
+      footer: this.makePdfFooter() ?? ((page: number, pages: number) => ({
         text: `Página ${page} de ${pages}  ·  NodoSys Sistema de Gestión`,
         fontSize: 8, color: '#555555', alignment: 'center', margin: [0, 10, 0, 0],
-      }),
+      })),
       content: [
         { text: 'REPORTE DE INVENTARIO', style: 'title' },
         { text: 'Estado actual de todos los equipos y materiales del nodo', style: 'subtitle' },
@@ -464,20 +548,21 @@ export class ReportsService {
       });
     });
 
+    // LEGAL landscape: 14in × 8.5in = 1008pt × 612pt
     return buildPdf({
       pageSize: 'LEGAL',
       pageOrientation: 'landscape',
-      pageMargins: [28, 45, 28, 38],
-      header: {
+      pageMargins: [28, this.topMarginPt(1008), 28, this.bottomMarginPt(1008)],
+      header: this.makePdfHeader() ?? {
         columns: [
           { text: 'NodoSys · IU Digital', fontSize: 7, color: '#555555', margin: [28, 14, 0, 0] },
           { text: `Generado: ${new Date().toLocaleString('es-CO')}`, fontSize: 7, color: '#555555', alignment: 'right', margin: [0, 14, 28, 0] },
         ],
       },
-      footer: (page: number, pages: number) => ({
+      footer: this.makePdfFooter() ?? ((page: number, pages: number) => ({
         text: `Página ${page} de ${pages}  ·  Plan de Trabajo Profesoral DO-F-002 · IU Digital`,
         fontSize: 7, color: '#555555', alignment: 'center', margin: [0, 8, 0, 0],
-      }),
+      })),
       content,
       styles: {
         axisTitle: { fontSize: 11, bold: true, color: '#FF6B2B' },
