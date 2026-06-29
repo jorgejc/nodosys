@@ -35,6 +35,12 @@ export class WorkPlanController {
     return this.svc.create(dto, user);
   }
 
+  @Get('my-tasks')
+  @ApiOperation({ summary: 'Tareas del plan propio (para selector de procesos)' })
+  findMyTasks(@CurrentUser() user: User) {
+    return this.svc.findMyTasks(user);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Detalle del plan con ejes y actividades' })
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {

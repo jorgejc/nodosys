@@ -20,9 +20,18 @@ export interface SessionAttendee {
   certifiable: boolean;
 }
 
+export interface SessionEvidence {
+  id: string;
+  sessionId: string;
+  fileUrl: string;
+  caption: string | null;
+  uploadedAt: string;
+}
+
 export interface CourseSession {
   id: string;
-  activityId: string;
+  activityId: string | null;
+  processId: string | null;
   sessionNumber: number;
   date: string;
   startTime: string | null;
@@ -30,11 +39,13 @@ export interface CourseSession {
   topic: string | null;
   location: string | null;
   totalRegistered: number;
+  experience: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
   moments: SessionMoment[];
   attendees: SessionAttendee[];
+  evidences: SessionEvidence[];
   creator?: { id: string; name: string; email: string };
 }
 
@@ -54,6 +65,7 @@ export interface CreateSessionPayload {
   topic?: string;
   location?: string;
   totalRegistered?: number;
+  experience?: string;
   moments?: {
     momentType: 'explorar' | 'crear' | 'consolidar';
     objective?: string;
@@ -98,4 +110,14 @@ export const sessionsService = {
 
   deleteAttendee: (sessionId: string, attendeeId: string) =>
     api.delete(`/sessions/${sessionId}/attendees/${attendeeId}`),
+
+  // ── Evidencias ────────────────────────────────────────────
+  getEvidences: (sessionId: string) =>
+    api.get<SessionEvidence[]>(`/sessions/${sessionId}/evidences`).then((r) => r.data),
+
+  addEvidence: (sessionId: string, data: { fileUrl: string; caption?: string }) =>
+    api.post<SessionEvidence>(`/sessions/${sessionId}/evidences`, data).then((r) => r.data),
+
+  deleteEvidence: (evidenceId: string) =>
+    api.delete(`/sessions/evidences/${evidenceId}`),
 };

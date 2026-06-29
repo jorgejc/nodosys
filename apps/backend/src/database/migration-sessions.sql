@@ -53,3 +53,30 @@ CREATE TABLE IF NOT EXISTS session_attendees (
 );
 
 CREATE INDEX IF NOT EXISTS idx_session_attendees_session ON session_attendees(session_id);
+
+-- ============================================================
+-- Módulo 7: Procesos + mejoras a Sesiones
+-- Ejecutar en Supabase SQL Editor (production)
+-- En desarrollo TypeORM synchronize:true aplica los cambios automáticamente
+-- ============================================================
+
+-- Hacer activity_id nullable (sesiones pueden pertenecer a un proceso sin actividad)
+ALTER TABLE course_sessions ALTER COLUMN activity_id DROP NOT NULL;
+
+-- FK a processes
+ALTER TABLE course_sessions ADD COLUMN IF NOT EXISTS process_id UUID REFERENCES processes(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_course_sessions_process ON course_sessions(process_id);
+
+-- Campo de experiencia / descripción narrativa de la sesión
+ALTER TABLE course_sessions ADD COLUMN IF NOT EXISTS experience TEXT;
+
+-- Tabla de evidencias de sesión (URL + caption)
+CREATE TABLE IF NOT EXISTS session_evidences (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id   UUID NOT NULL REFERENCES course_sessions(id) ON DELETE CASCADE,
+  file_url     VARCHAR(1000) NOT NULL,
+  caption      VARCHAR(300),
+  uploaded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_evidences_session ON session_evidences(session_id);

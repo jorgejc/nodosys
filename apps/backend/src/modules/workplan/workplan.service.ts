@@ -101,6 +101,23 @@ async findAll(user: User): Promise<WorkPlan[]> {
   return qb.getMany();
 }
 
+  async findMyTasks(user: User): Promise<{ id: string; label: string }[]> {
+    const plans = await this.planRepo.find({
+      where: { userId: user.id },
+      relations: ['axes', 'axes.activities'],
+      order: { createdAt: 'DESC' } as never,
+    });
+
+    return plans.flatMap((plan) =>
+      (plan.axes ?? []).flatMap((axis) =>
+        (axis.activities ?? []).map((act) => ({
+          id:    act.id,
+          label: `${plan.semester} — ${act.name}`,
+        })),
+      ),
+    );
+  }
+
   async findOne(id: string, user: User): Promise<WorkPlan & { summary: object }> {
     const plan = await this.planRepo.findOne({
       where: { id },

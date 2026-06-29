@@ -35,4 +35,9 @@ export class ProcessesController {
   ) {
     return this.processesService.update(id, dto, user);
   }
+
+  @Get(':id/report')
+  getReport(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.processesService.getReport(id, user);
+  }
 }

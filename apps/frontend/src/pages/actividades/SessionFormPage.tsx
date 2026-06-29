@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { useForm, Controller } from 'react-hook-form';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,6 +22,7 @@ const schema = z.object({
   topic:            z.string().max(300).optional(),
   location:         z.string().max(300).optional(),
   totalRegistered:  z.coerce.number().int().min(0).optional(),
+  experience:       z.string().optional(),
   explorar:         momentSchema,
   crear:            momentSchema,
   consolidar:       momentSchema,
@@ -103,10 +104,17 @@ function MomentSection({ name, register, errors }: {
 
 // ── Página principal ──────────────────────────────────────
 export default function SessionFormPage() {
-  const { id: activityId, sid } = useParams<{ id: string; sid: string }>();
-  const navigate = useNavigate();
-  const qc = useQueryClient();
-  const isEditing = !!sid;
+  const { id, sid } = useParams<{ id: string; sid: string }>();
+  const location     = useLocation();
+  const navigate     = useNavigate();
+  const qc           = useQueryClient();
+  const isEditing    = !!sid;
+
+  // Detecta contexto: ¿venimos de /procesos/ o /actividades/?
+  const isProcessContext = location.pathname.startsWith('/procesos/');
+  const processId        = isProcessContext ? id : undefined;
+  const activityId       = isProcessContext ? undefined : id;
+  const backPath         = isProcessContext ? `/procesos/${id}` : `/actividades/${id}`;
 
   // Cargar sesión existente si es edición
   const existingQ = useQuery({
@@ -135,6 +143,7 @@ export default function SessionFormPage() {
         topic:           s.topic ?? '',
         location:        s.location ?? '',
         totalRegistered: s.totalRegistered,
+        experience:      s.experience ?? '',
         explorar: {
           objective:       getM('explorar')?.objective       ?? '',
           methodology:     getM('explorar')?.methodology     ?? '',
@@ -157,44 +166,50 @@ export default function SessionFormPage() {
     }
   }, [existingQ.data, reset]);
 
+  const buildPayload = (data: FormData) => ({
+    date:            data.date,
+    startTime:       data.startTime  || undefined,
+    endTime:         data.endTime    || undefined,
+    topic:           data.topic      || undefined,
+    location:        data.location   || undefined,
+    totalRegistered: data.totalRegistered,
+    experience:      data.experience || undefined,
+    moments: [
+      { momentType: 'explorar'   as const, ...cleanMoment(data.explorar)   },
+      { momentType: 'crear'      as const, ...cleanMoment(data.crear)      },
+      { momentType: 'consolidar' as const, ...cleanMoment(data.consolidar) },
+    ],
+  });
+
   const createM = useMutation({
-    mutationFn: (data: FormData) => sessionsService.create(activityId!, {
-      date:            data.date,
-      startTime:       data.startTime || undefined,
-      endTime:         data.endTime || undefined,
-      topic:           data.topic || undefined,
-      location:        data.location || undefined,
-      totalRegistered: data.totalRegistered,
-      moments: [
-        { momentType: 'explorar',   ...cleanMoment(data.explorar)   },
-        { momentType: 'crear',      ...cleanMoment(data.crear)      },
-        { momentType: 'consolidar', ...cleanMoment(data.consolidar) },
-      ],
-    }),
+    mutationFn: (data: FormData) =>
+      isProcessContext
+        ? sessionsService.createForProcess(processId!, buildPayload(data))
+        : sessionsService.create(activityId!, buildPayload(data)),
     onSuccess: (session) => {
-      qc.invalidateQueries({ queryKey: ['sessions', activityId] });
-      navigate(`/actividades/${activityId}/sesiones/${session.id}`);
+      if (isProcessContext) {
+        qc.invalidateQueries({ queryKey: ['sessions', 'process', processId] });
+        navigate(`/procesos/${processId}/sesiones/${session.id}`);
+      } else {
+        qc.invalidateQueries({ queryKey: ['sessions', activityId] });
+        navigate(`/actividades/${activityId}/sesiones/${session.id}`);
+      }
     },
   });
 
   const updateM = useMutation({
-    mutationFn: (data: FormData) => sessionsService.update(sid!, {
-      date:            data.date,
-      startTime:       data.startTime || undefined,
-      endTime:         data.endTime || undefined,
-      topic:           data.topic || undefined,
-      location:        data.location || undefined,
-      totalRegistered: data.totalRegistered,
-      moments: [
-        { momentType: 'explorar',   ...cleanMoment(data.explorar)   },
-        { momentType: 'crear',      ...cleanMoment(data.crear)      },
-        { momentType: 'consolidar', ...cleanMoment(data.consolidar) },
-      ],
-    }),
+    mutationFn: (data: FormData) => sessionsService.update(sid!, buildPayload(data)),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sessions', activityId] });
       qc.invalidateQueries({ queryKey: ['session', sid] });
-      navigate(`/actividades/${activityId}/sesiones/${sid}`);
+      // Backlink dinámico al editar: leer el processId de la sesión existente
+      const s = existingQ.data;
+      if (s?.processId) {
+        qc.invalidateQueries({ queryKey: ['sessions', 'process', s.processId] });
+        navigate(`/procesos/${s.processId}/sesiones/${sid}`);
+      } else {
+        qc.invalidateQueries({ queryKey: ['sessions', s?.activityId] });
+        navigate(`/actividades/${s?.activityId}/sesiones/${sid}`);
+      }
     },
   });
 
@@ -211,10 +226,13 @@ export default function SessionFormPage() {
   return (
     <div className="max-w-2xl space-y-6 pb-12">
       <button
-        onClick={() => navigate(`/actividades/${activityId}`)}
+        onClick={() => navigate(isEditing && existingQ.data?.processId
+          ? `/procesos/${existingQ.data.processId}`
+          : backPath
+        )}
         className="flex items-center gap-2 text-sm text-[#666] hover:text-white transition-colors"
       >
-        <ArrowLeft size={16} /> Volver a la actividad
+        <ArrowLeft size={16} /> {isProcessContext ? 'Volver al proceso' : 'Volver a la actividad'}
       </button>
 
       <div>
@@ -304,6 +322,18 @@ export default function SessionFormPage() {
         <MomentSection name="explorar"   register={register} errors={errors} />
         <MomentSection name="crear"      register={register} errors={errors} />
         <MomentSection name="consolidar" register={register} errors={errors} />
+
+        {/* Descripción / Experiencia */}
+        <div className="bg-[#111] border border-[#2A2A2A] rounded-xl p-5 space-y-2">
+          <h2 className="text-sm font-semibold text-white">Descripción / Experiencia de la sesión</h2>
+          <p className="text-xs text-[#555]">Narra cómo fue la sesión: qué ocurrió, cómo respondieron los participantes, observaciones relevantes.</p>
+          <textarea
+            {...register('experience')}
+            rows={5}
+            placeholder="La sesión comenzó con una dinámica de calentamiento... Los estudiantes mostraron interés en..."
+            className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#444] outline-none focus:border-[#FF6B2B] resize-none"
+          />
+        </div>
 
         <button
           type="submit"

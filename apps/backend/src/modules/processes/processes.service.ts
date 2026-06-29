@@ -4,6 +4,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Process, ProcessStatus } from './entities/process.entity';
+import { CourseSession } from '../sessions/entities/course-session.entity';
 import { CreateProcessDto, UpdateProcessDto } from './dto/processes.dto';
 import { User, UserRole } from '../users/entities/user.entity';
 
@@ -19,6 +20,9 @@ export class ProcessesService {
   constructor(
     @InjectRepository(Process)
     private readonly repo: Repository<Process>,
+
+    @InjectRepository(CourseSession)
+    private readonly sessionRepo: Repository<CourseSession>,
   ) {}
 
   async create(dto: CreateProcessDto, user: User): Promise<Process> {
@@ -105,5 +109,60 @@ export class ProcessesService {
 
   private isNodoRole(role: UserRole): boolean {
     return [UserRole.ENLACE, UserRole.MONITOR, UserRole.AUXILIAR].includes(role);
+  }
+
+  async getReport(id: string, user: User) {
+    const process = await this.findOne(id, user);
+
+    const sessions = await this.sessionRepo.find({
+      where: { processId: id },
+      relations: ['moments', 'attendees', 'evidences'],
+      order: { sessionNumber: 'ASC' } as never,
+    });
+
+    const attendanceMap = new Map<string, {
+      fullName: string;
+      documentNumber: string | null;
+      sessionsAttended: number;
+      totalSessions: number;
+      absences: number;
+    }>();
+
+    for (const session of sessions) {
+      for (const attendee of session.attendees) {
+        const key = `${attendee.fullName.trim().toLowerCase()}|||${attendee.documentNumber ?? ''}`;
+        const rec = attendanceMap.get(key);
+        if (rec) {
+          rec.totalSessions++;
+          if (attendee.attended) rec.sessionsAttended++;
+          else rec.absences++;
+        } else {
+          attendanceMap.set(key, {
+            fullName:         attendee.fullName,
+            documentNumber:   attendee.documentNumber,
+            sessionsAttended: attendee.attended ? 1 : 0,
+            totalSessions:    1,
+            absences:         attendee.attended ? 0 : 1,
+          });
+        }
+      }
+    }
+
+    const consolidatedAttendance = Array.from(attendanceMap.values())
+      .map((a) => ({ ...a, certifiable: a.absences <= 4 }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName, 'es'));
+
+    const dates = sessions.map((s) => s.date).sort();
+
+    return {
+      process,
+      sessions,
+      consolidatedAttendance,
+      totalSessions: sessions.length,
+      dateRange: {
+        start: dates[0] ?? null,
+        end:   dates[dates.length - 1] ?? null,
+      },
+    };
   }
 }

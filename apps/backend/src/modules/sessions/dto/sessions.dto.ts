@@ -56,6 +56,10 @@ export class CreateSessionDto {
   @IsInt() @Min(0) @IsOptional()
   totalRegistered?: number;
 
+  @ApiPropertyOptional({ example: 'La sesión fue muy dinámica...' })
+  @IsString() @IsOptional()
+  experience?: string;
+
   @ApiPropertyOptional({
     type: [MomentDto],
     description: 'Array de 3 momentos: explorar, crear, consolidar',
@@ -69,6 +73,17 @@ export class CreateSessionDto {
 }
 
 export class UpdateSessionDto extends PartialType(CreateSessionDto) {}
+
+// ── Evidencias de sesión ──────────────────────────────────
+export class AddSessionEvidenceDto {
+  @ApiProperty({ example: 'https://drive.google.com/file/d/...' })
+  @IsString() @MaxLength(1000)
+  fileUrl: string;
+
+  @ApiPropertyOptional({ example: 'Foto del inicio de la sesión' })
+  @IsString() @MaxLength(300) @IsOptional()
+  caption?: string;
+}
 
 // ── Asistente ─────────────────────────────────────────────
 export class AddAttendeeDto {

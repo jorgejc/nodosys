@@ -1,5 +1,23 @@
 import api from './api';
 import type { Process } from '@/types';
+import type { CourseSession } from './sessions.service';
+
+export interface ConsolidatedAttendee {
+  fullName: string;
+  documentNumber: string | null;
+  sessionsAttended: number;
+  totalSessions: number;
+  absences: number;
+  certifiable: boolean;
+}
+
+export interface ProcessReport {
+  process: Process & { creator?: { id: string; name: string; email: string } };
+  sessions: CourseSession[];
+  consolidatedAttendance: ConsolidatedAttendee[];
+  totalSessions: number;
+  dateRange: { start: string | null; end: string | null };
+}
 
 export const processesService = {
   getAll: (params?: { status?: string; type?: string }) =>
@@ -24,4 +42,7 @@ export const processesService = {
     nodoId?: string;
     workPlanTaskId?: string;
   }) => api.patch<Process>(`/processes/${id}`, data).then((r) => r.data),
+
+  getReport: (id: string) =>
+    api.get<ProcessReport>(`/processes/${id}/report`).then((r) => r.data),
 };

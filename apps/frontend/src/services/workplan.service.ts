@@ -33,4 +33,7 @@ export const workPlanService = {
 
   deleteActivity: (id: string) =>
     api.delete(`/workplan/activities/${id}`),
+
+  getMyTasks: () =>
+    api.get<{ id: string; label: string }[]>('/workplan/my-tasks').then((r) => r.data),
 };

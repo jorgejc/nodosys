@@ -8,6 +8,7 @@ import { SessionsService } from './sessions.service';
 import {
   CreateSessionDto, UpdateSessionDto,
   AddAttendeeDto, UpdateAttendeeDto,
+  AddSessionEvidenceDto,
 } from './dto/sessions.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -120,5 +121,33 @@ export class SessionsController {
     @CurrentUser() user: User,
   ) {
     return this.svc.deleteAttendee(sessionId, attendeeId, user);
+  }
+
+  // ── Evidencias ────────────────────────────────────────────
+
+  @Get(':id/evidences')
+  @ApiOperation({ summary: 'Listar evidencias de una sesión' })
+  getEvidences(@Param('id', ParseUUIDPipe) sessionId: string) {
+    return this.svc.getEvidences(sessionId);
+  }
+
+  @Post(':id/evidences')
+  @ApiOperation({ summary: 'Agregar evidencia (URL) a una sesión' })
+  addEvidence(
+    @Param('id', ParseUUIDPipe) sessionId: string,
+    @Body() dto: AddSessionEvidenceDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.svc.addEvidence(sessionId, dto, user);
+  }
+
+  @Delete('evidences/:eId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar una evidencia de sesión' })
+  deleteEvidence(
+    @Param('eId', ParseUUIDPipe) evidenceId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.svc.deleteEvidence(evidenceId, user);
   }
 }

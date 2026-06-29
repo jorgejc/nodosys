@@ -7,7 +7,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Loader2, Save } from 'lucide-react';
 import { processesService } from '@/services/processes.service';
 import { workPlanService } from '@/services/workplan.service';
-import type { WorkPlan } from '@/types';
 
 const schema = z.object({
   name:            z.string().min(2, 'Mínimo 2 caracteres').max(300),
@@ -53,21 +52,12 @@ export default function ProcesoFormPage() {
   }, [existing.data, reset]);
 
   // Tareas del plan de trabajo para el selector
-  const plansQ = useQuery({
-    queryKey: ['workplan-all-for-select'],
-    queryFn:  workPlanService.getAll,
+  const tasksQ = useQuery({
+    queryKey: ['workplan-my-tasks'],
+    queryFn:  workPlanService.getMyTasks,
   });
 
-  // Aplanar tareas de todos los planes
-  const tasks: { id: string; label: string }[] = (plansQ.data ?? []).flatMap(
-    (plan: WorkPlan) =>
-      (plan.axes ?? []).flatMap((ax) =>
-        (ax.activities ?? []).map((act) => ({
-          id:    act.id,
-          label: `${plan.semester} — ${act.name}`,
-        })),
-      ),
-  );
+  const tasks: { id: string; label: string }[] = tasksQ.data ?? [];
 
   const createM = useMutation({
     mutationFn: (data: FormData) =>

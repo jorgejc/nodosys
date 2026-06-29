@@ -6,9 +6,11 @@ import { Repository, DataSource } from 'typeorm';
 import { CourseSession } from './entities/course-session.entity';
 import { SessionMoment, MomentType } from './entities/session-moment.entity';
 import { SessionAttendee } from './entities/session-attendee.entity';
+import { SessionEvidence } from './entities/session-evidence.entity';
 import {
   CreateSessionDto, UpdateSessionDto,
   AddAttendeeDto, UpdateAttendeeDto,
+  AddSessionEvidenceDto,
 } from './dto/sessions.dto';
 import { User, UserRole } from '../users/entities/user.entity';
 
@@ -23,6 +25,9 @@ export class SessionsService {
 
     @InjectRepository(SessionAttendee)
     private readonly attendeeRepo: Repository<SessionAttendee>,
+
+    @InjectRepository(SessionEvidence)
+    private readonly evidenceRepo: Repository<SessionEvidence>,
 
     private readonly dataSource: DataSource,
   ) {}
@@ -74,6 +79,7 @@ export class SessionsService {
       topic:           dto.topic ?? null,
       location:        dto.location ?? null,
       totalRegistered: dto.totalRegistered ?? 0,
+      experience:      dto.experience ?? null,
       createdBy:       user.id,
     });
 
@@ -99,7 +105,7 @@ export class SessionsService {
   async findOne(id: string): Promise<CourseSession> {
     const session = await this.sessionRepo.findOne({
       where: { id },
-      relations: ['moments', 'attendees', 'creator'],
+      relations: ['moments', 'attendees', 'creator', 'evidences'],
     });
     if (!session) throw new NotFoundException('Sesión no encontrada');
 
@@ -127,6 +133,7 @@ export class SessionsService {
       topic: dto.topic ?? null,
       location: dto.location ?? null,
       totalRegistered: dto.totalRegistered ?? 0,
+      experience: dto.experience ?? null,
       createdBy: user.id,
     });
 
@@ -168,6 +175,7 @@ export class SessionsService {
       topic:            dto.topic           ?? session.topic,
       location:         dto.location        ?? session.location,
       totalRegistered:  dto.totalRegistered ?? session.totalRegistered,
+      experience:       dto.experience      !== undefined ? dto.experience : session.experience,
     });
     await this.sessionRepo.save(session);
 
@@ -276,6 +284,47 @@ export class SessionsService {
     });
     if (!attendee) throw new NotFoundException('Asistente no encontrado');
     await this.attendeeRepo.remove(attendee);
+  }
+
+  // ── Evidencias de sesión ─────────────────────────────────
+
+  async addEvidence(
+    sessionId: string,
+    dto: AddSessionEvidenceDto,
+    user: User,
+  ): Promise<SessionEvidence> {
+    const session = await this.findOne(sessionId);
+    if (!this.canManage(session, user)) {
+      throw new ForbiddenException('Sin permiso para agregar evidencias');
+    }
+    const evidence = this.evidenceRepo.create({
+      sessionId,
+      fileUrl: dto.fileUrl,
+      caption: dto.caption ?? null,
+    });
+    return this.evidenceRepo.save(evidence);
+  }
+
+  async getEvidences(sessionId: string): Promise<SessionEvidence[]> {
+    return this.evidenceRepo.find({
+      where: { sessionId },
+      order: { uploadedAt: 'ASC' },
+    });
+  }
+
+  async deleteEvidence(
+    evidenceId: string,
+    user: User,
+  ): Promise<void> {
+    const evidence = await this.evidenceRepo.findOne({
+      where: { id: evidenceId },
+      relations: ['session'],
+    });
+    if (!evidence) throw new NotFoundException('Evidencia no encontrada');
+    if (!this.canManage(evidence.session, user)) {
+      throw new ForbiddenException('Sin permiso para eliminar esta evidencia');
+    }
+    await this.evidenceRepo.remove(evidence);
   }
 
   // ── Reporte de asistencia por actividad ──────────────────

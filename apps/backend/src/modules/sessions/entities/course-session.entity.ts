@@ -5,6 +5,7 @@ import {
 } from 'typeorm';
 import { SessionMoment } from './session-moment.entity';
 import { SessionAttendee } from './session-attendee.entity';
+import { SessionEvidence } from './session-evidence.entity';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('course_sessions')
@@ -39,6 +40,9 @@ export class CourseSession {
   @Column({ name: 'process_id', type: 'uuid', nullable: true })
   processId: string | null;
 
+  @Column({ type: 'text', nullable: true })
+  experience: string | null;
+
   @Column({ name: 'created_by', type: 'uuid' })
   createdBy: string;
 
@@ -57,4 +61,7 @@ export class CourseSession {
 
   @OneToMany(() => SessionAttendee, (a) => a.session, { cascade: true })
   attendees: SessionAttendee[];
+
+  @OneToMany(() => SessionEvidence, (e) => e.session, { cascade: true })
+  evidences: SessionEvidence[];
 }

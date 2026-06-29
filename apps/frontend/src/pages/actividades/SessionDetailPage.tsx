@@ -4,9 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Loader2, Edit2, Trash2, Plus,
   Download, Users, CheckCircle, XCircle,
-  Calendar, Clock, MapPin,
+  Calendar, Clock, MapPin, FileText, Link2,
 } from 'lucide-react';
-import { sessionsService, type SessionAttendee } from '@/services/sessions.service';
+import { sessionsService, type SessionAttendee, type SessionEvidence } from '@/services/sessions.service';
 import { useAuth } from '@/hooks/useAuth';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -25,11 +25,13 @@ const MOMENT_META = {
 } as const;
 
 // ── PDF export ────────────────────────────────────────────
-function exportPDF(session: ReturnType<typeof sessionsService.getById> extends Promise<infer T> ? T : never, activityTitle: string, teacherName: string) {
-  const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-  const W = 210;
+type SessionData = Awaited<ReturnType<typeof sessionsService.getById>>;
+
+function exportPDF(session: SessionData, contextTitle: string, teacherName: string) {
+  const doc    = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+  const W      = 210;
   const margin = 15;
-  let y = margin;
+  let y        = margin;
 
   // Encabezado institucional
   doc.setFillColor(255, 107, 43);
@@ -44,7 +46,7 @@ function exportPDF(session: ReturnType<typeof sessionsService.getById> extends P
   doc.setTextColor(0, 0, 0);
   y = 26;
 
-  // Título del documento
+  // Título
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   doc.text('BITÁCORA DE SESIÓN', W / 2, y, { align: 'center' });
@@ -53,7 +55,7 @@ function exportPDF(session: ReturnType<typeof sessionsService.getById> extends P
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(80, 80, 80);
-  const titleLines = doc.splitTextToSize(activityTitle, W - margin * 2);
+  const titleLines = doc.splitTextToSize(contextTitle, W - margin * 2);
   doc.text(titleLines, W / 2, y, { align: 'center' });
   y += titleLines.length * 5 + 4;
 
@@ -61,16 +63,14 @@ function exportPDF(session: ReturnType<typeof sessionsService.getById> extends P
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(9);
 
-  const sessionData = [
-    ['Sesión N°', String(session.sessionNumber), 'Fecha', fmt(session.date)],
-    ['Hora inicio', session.startTime ?? '—', 'Hora fin', session.endTime ?? '—'],
-    ['Lugar', session.location ?? '—', 'Asistentes', String(session.totalRegistered)],
-    ['Tema', session.topic ?? '—', '', ''],
-  ];
-
   autoTable(doc, {
     startY: y,
-    body: sessionData,
+    body: [
+      ['Sesión N°', String(session.sessionNumber), 'Fecha', fmt(session.date)],
+      ['Hora inicio', session.startTime ?? '—', 'Hora fin', session.endTime ?? '—'],
+      ['Lugar', session.location ?? '—', 'Asistentes', String(session.totalRegistered)],
+      ['Tema', session.topic ?? '—', '', ''],
+    ],
     theme: 'grid',
     styles: { fontSize: 9, cellPadding: 2.5 },
     columnStyles: {
@@ -81,11 +81,10 @@ function exportPDF(session: ReturnType<typeof sessionsService.getById> extends P
     },
     margin: { left: margin, right: margin },
   });
-
   y = (doc as any).lastAutoTable.finalY + 6;
 
   // 3 Momentos pedagógicos
-  const ORDER = ['explorar', 'crear', 'consolidar'] as const;
+  const ORDER   = ['explorar', 'crear', 'consolidar'] as const;
   const LABELS: Record<string, string> = {
     explorar:   '1. EXPLORAR — Activación de saberes previos',
     crear:      '2. CREAR — Desarrollo y práctica',
@@ -97,21 +96,19 @@ function exportPDF(session: ReturnType<typeof sessionsService.getById> extends P
   doc.text('MOMENTOS PEDAGÓGICOS', margin, y);
   y += 4;
 
-  const momentsBody = ORDER.map((mt) => {
-    const m = session.moments.find((mo) => mo.momentType === mt);
-    return [
-      LABELS[mt],
-      m?.objective    ?? '',
-      m?.methodology  ?? '',
-      m?.materials    ?? '',
-      m?.durationMinutes ? `${m.durationMinutes} min` : '',
-    ];
-  });
-
   autoTable(doc, {
     startY: y,
     head: [['Momento', 'Objetivo', 'Metodología', 'Materiales', 'Duración']],
-    body: momentsBody,
+    body: ORDER.map((mt) => {
+      const m = session.moments.find((mo) => mo.momentType === mt);
+      return [
+        LABELS[mt],
+        m?.objective    ?? '',
+        m?.methodology  ?? '',
+        m?.materials    ?? '',
+        m?.durationMinutes ? `${m.durationMinutes} min` : '',
+      ];
+    }),
     theme: 'striped',
     headStyles: { fillColor: [255, 107, 43], textColor: 255, fontSize: 8 },
     styles: { fontSize: 8, cellPadding: 3, valign: 'top' },
@@ -124,28 +121,42 @@ function exportPDF(session: ReturnType<typeof sessionsService.getById> extends P
     },
     margin: { left: margin, right: margin },
   });
-
   y = (doc as any).lastAutoTable.finalY + 6;
+
+  // Experiencia / Descripción narrativa
+  if (session.experience) {
+    if (y > 240) { doc.addPage(); y = margin; }
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DESCRIPCIÓN / EXPERIENCIA DE LA SESIÓN', margin, y);
+    y += 5;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    const expLines = doc.splitTextToSize(session.experience, W - margin * 2);
+    // Si no cabe en la página, saltar
+    if (y + expLines.length * 4.5 > 280) { doc.addPage(); y = margin; }
+    doc.text(expLines, margin, y);
+    y += expLines.length * 4.5 + 6;
+  }
 
   // Lista de asistentes
   if (session.attendees.length > 0) {
+    if (y > 220) { doc.addPage(); y = margin; }
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.text('LISTA DE ASISTENTES', margin, y);
     y += 4;
 
-    const attendeesBody = session.attendees.map((a, i) => [
-      String(i + 1),
-      a.fullName,
-      a.documentNumber ?? '',
-      a.attended ? 'Sí' : 'No',
-      '', // Firma
-    ]);
-
     autoTable(doc, {
       startY: y,
       head: [['#', 'Nombre completo', 'Documento', 'Asistió', 'Firma']],
-      body: attendeesBody,
+      body: session.attendees.map((a, i) => [
+        String(i + 1),
+        a.fullName,
+        a.documentNumber ?? '',
+        a.attended ? 'Sí' : 'No',
+        '',
+      ]),
       theme: 'striped',
       headStyles: { fillColor: [40, 40, 40], textColor: 255, fontSize: 8 },
       styles: { fontSize: 8, cellPadding: 3 },
@@ -158,7 +169,34 @@ function exportPDF(session: ReturnType<typeof sessionsService.getById> extends P
       },
       margin: { left: margin, right: margin },
     });
+    y = (doc as any).lastAutoTable.finalY + 8;
+  }
 
+  // Evidencias
+  const evidences = session.evidences ?? [];
+  if (evidences.length > 0) {
+    if (y > 240) { doc.addPage(); y = margin; }
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('EVIDENCIAS', margin, y);
+    y += 4;
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Descripción', 'URL / Enlace']],
+      body: evidences.map((ev) => [
+        ev.caption ?? '(sin descripción)',
+        ev.fileUrl,
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: [40, 40, 40], textColor: 255, fontSize: 8 },
+      styles: { fontSize: 7, cellPadding: 3, valign: 'top' },
+      columnStyles: {
+        0: { cellWidth: 55 },
+        1: { cellWidth: 125, textColor: [0, 80, 200] },
+      },
+      margin: { left: margin, right: margin },
+    });
     y = (doc as any).lastAutoTable.finalY + 8;
   }
 
@@ -180,8 +218,7 @@ function exportPDF(session: ReturnType<typeof sessionsService.getById> extends P
   doc.setTextColor(150, 150, 150);
   doc.text(`Generado el ${today} — NodoSys / IU Digital`, W / 2, 290, { align: 'center' });
 
-  const fileName = `Bitacora_S${session.sessionNumber}_${session.date}.pdf`;
-  doc.save(fileName);
+  doc.save(`Bitacora_S${session.sessionNumber}_${session.date}.pdf`);
 }
 
 // ── Modal agregar asistente ───────────────────────────────
@@ -261,15 +298,83 @@ function AddAttendeeModal({ sessionId, onClose }: { sessionId: string; onClose: 
   );
 }
 
+// ── Modal agregar evidencia ───────────────────────────────
+function AddEvidenceModal({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({ fileUrl: '', caption: '' });
+
+  const addM = useMutation({
+    mutationFn: () => sessionsService.addEvidence(sessionId, {
+      fileUrl: form.fileUrl,
+      caption: form.caption || undefined,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['session', sessionId] });
+      onClose();
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-[#111] border border-[#2A2A2A] rounded-xl p-6 w-full max-w-sm space-y-4">
+        <h3 className="text-white font-semibold">Agregar evidencia</h3>
+
+        <div>
+          <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">URL del archivo *</label>
+          <input
+            type="url"
+            value={form.fileUrl}
+            onChange={(e) => setForm((f) => ({ ...f, fileUrl: e.target.value }))}
+            placeholder="https://drive.google.com/..."
+            className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#444] outline-none focus:border-[#FF6B2B]"
+          />
+          <p className="text-xs text-[#444] mt-1">Sube la foto/archivo a Google Drive y pega el enlace compartible.</p>
+        </div>
+
+        <div>
+          <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">Descripción</label>
+          <input
+            value={form.caption}
+            onChange={(e) => setForm((f) => ({ ...f, caption: e.target.value }))}
+            placeholder="Ej: Foto del inicio de la sesión"
+            className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#444] outline-none focus:border-[#FF6B2B]"
+          />
+        </div>
+
+        {addM.error && (
+          <p className="text-red-400 text-xs">
+            {(addM.error as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Error al agregar'}
+          </p>
+        )}
+
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 border border-[#2A2A2A] rounded-lg text-sm text-[#666] hover:text-white transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={() => addM.mutate()}
+            disabled={!form.fileUrl.trim() || addM.isPending}
+            className="flex-1 bg-[#FF6B2B] hover:bg-[#e55c20] disabled:opacity-50 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5"
+          >
+            {addM.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+            Agregar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────
 export default function SessionDetailPage() {
-  const { id: activityId, sid } = useParams<{ id: string; sid: string }>();
+  const { id, sid } = useParams<{ id: string; sid: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { user, isAdmin, isVicerrector } = useAuth();
   const isDirector = isAdmin || isVicerrector;
 
   const [showAddAttendee, setShowAddAttendee] = useState(false);
+  const [showAddEvidence, setShowAddEvidence] = useState(false);
 
   const q = useQuery({
     queryKey: ['session', sid],
@@ -288,6 +393,11 @@ export default function SessionDetailPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['session', sid] }),
   });
 
+  const deleteEvidenceM = useMutation({
+    mutationFn: (evidenceId: string) => sessionsService.deleteEvidence(evidenceId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['session', sid] }),
+  });
+
   if (q.isLoading) {
     return (
       <div className="flex items-center justify-center py-32">
@@ -302,14 +412,27 @@ export default function SessionDetailPage() {
   const canEdit = isDirector || s.createdBy === user?.id;
   const ORDER = ['explorar', 'crear', 'consolidar'] as const;
 
+  // Backlink dinámico: usa processId si existe, si no activityId, si no el param de la URL
+  const backPath = s.processId
+    ? `/procesos/${s.processId}`
+    : s.activityId
+      ? `/actividades/${s.activityId}`
+      : `/actividades/${id}`;
+
+  const editPath = s.processId
+    ? `/procesos/${s.processId}/sesiones/${sid}/editar`
+    : `/actividades/${s.activityId ?? id}/sesiones/${sid}/editar`;
+
+  const contextTitle = s.topic ?? `Sesión ${s.sessionNumber}`;
+
   return (
     <div className="max-w-3xl space-y-6 pb-12">
       {/* Navegación */}
       <button
-        onClick={() => navigate(`/actividades/${activityId}`)}
+        onClick={() => navigate(backPath)}
         className="flex items-center gap-2 text-sm text-[#666] hover:text-white transition-colors"
       >
-        <ArrowLeft size={16} /> Volver a la actividad
+        <ArrowLeft size={16} /> {s.processId ? 'Volver al proceso' : 'Volver a la actividad'}
       </button>
 
       {/* Encabezado de la sesión */}
@@ -321,19 +444,19 @@ export default function SessionDetailPage() {
             </div>
             <div>
               <p className="text-xs font-mono text-[#555] uppercase tracking-widest">Sesión {s.sessionNumber}</p>
-              <h1 className="text-xl font-bold text-white">{s.topic ?? `Sesión ${s.sessionNumber}`}</h1>
+              <h1 className="text-xl font-bold text-white">{contextTitle}</h1>
             </div>
           </div>
           <div className="flex gap-2 flex-shrink-0">
             <button
-              onClick={() => exportPDF(s, s.topic ?? `Sesión ${s.sessionNumber}`, user?.name ?? 'Docente')}
+              onClick={() => exportPDF(s, contextTitle, user?.name ?? 'Docente')}
               className="flex items-center gap-1.5 text-xs bg-[#1A1A1A] border border-[#2A2A2A] text-[#888] hover:text-white px-3 py-2 rounded-lg transition-colors"
             >
               <Download size={13} /> Bitácora PDF
             </button>
             {canEdit && (
               <button
-                onClick={() => navigate(`/actividades/${activityId}/sesiones/${sid}/editar`)}
+                onClick={() => navigate(editPath)}
                 className="flex items-center gap-1.5 text-xs bg-[#FF6B2B]/10 border border-[#FF6B2B]/30 text-[#FF6B2B] hover:bg-[#FF6B2B]/20 px-3 py-2 rounded-lg transition-colors"
               >
                 <Edit2 size={13} /> Editar
@@ -414,6 +537,28 @@ export default function SessionDetailPage() {
         })}
       </div>
 
+      {/* Descripción / Experiencia */}
+      {(s.experience || canEdit) && (
+        <div className="bg-[#111] border border-[#2A2A2A] rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <FileText size={15} className="text-[#FF6B2B]" />
+            <h2 className="text-sm font-semibold text-white">Descripción / Experiencia</h2>
+          </div>
+          {s.experience ? (
+            <p className="text-sm text-[#CCC] whitespace-pre-wrap leading-relaxed">{s.experience}</p>
+          ) : (
+            <p className="text-xs text-[#444] italic">
+              Sin descripción narrativa.{' '}
+              {canEdit && (
+                <button onClick={() => navigate(editPath)} className="text-[#FF6B2B] hover:underline">
+                  Agregar →
+                </button>
+              )}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Asistentes */}
       <div className="bg-[#111] border border-[#2A2A2A] rounded-xl overflow-hidden">
         <div className="px-5 py-3.5 border-b border-[#1E1E1E] flex items-center justify-between">
@@ -436,9 +581,7 @@ export default function SessionDetailPage() {
 
         {s.attendees.length === 0 ? (
           <div className="py-10 text-center text-[#555] text-sm">
-            {canEdit
-              ? 'Agrega los participantes de esta sesión.'
-              : 'Sin asistentes registrados.'}
+            {canEdit ? 'Agrega los participantes de esta sesión.' : 'Sin asistentes registrados.'}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -498,8 +641,75 @@ export default function SessionDetailPage() {
         )}
       </div>
 
+      {/* Evidencias */}
+      <div className="bg-[#111] border border-[#2A2A2A] rounded-xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-[#1E1E1E] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Link2 size={15} className="text-[#FF6B2B]" />
+            <span className="text-sm font-semibold text-white">Evidencias</span>
+            <span className="text-xs text-[#555] bg-[#1A1A1A] px-2 py-0.5 rounded-full">
+              {(s.evidences ?? []).length}
+            </span>
+          </div>
+          {canEdit && (
+            <button
+              onClick={() => setShowAddEvidence(true)}
+              className="flex items-center gap-1.5 text-xs bg-[#FF6B2B]/10 border border-[#FF6B2B]/30 text-[#FF6B2B] hover:bg-[#FF6B2B]/20 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <Plus size={12} /> Agregar
+            </button>
+          )}
+        </div>
+
+        {(s.evidences ?? []).length === 0 ? (
+          <div className="py-10 text-center text-[#555] text-sm">
+            {canEdit ? 'Agrega fotos o archivos (URL de Google Drive).' : 'Sin evidencias registradas.'}
+          </div>
+        ) : (
+          <div className="divide-y divide-[#1A1A1A]">
+            {(s.evidences ?? []).map((ev: SessionEvidence) => (
+              <div key={ev.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#161616]">
+                <div className="flex-1 min-w-0">
+                  {ev.caption && (
+                    <p className="text-sm text-white font-medium truncate">{ev.caption}</p>
+                  )}
+                  <a
+                    href={ev.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[#FF6B2B] hover:underline truncate block"
+                  >
+                    {ev.fileUrl}
+                  </a>
+                </div>
+                <a
+                  href={ev.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-[#666] hover:text-white transition-colors flex-shrink-0"
+                  title="Abrir enlace"
+                >
+                  <Link2 size={14} />
+                </a>
+                {canEdit && (
+                  <button
+                    onClick={() => deleteEvidenceM.mutate(ev.id)}
+                    className="text-[#444] hover:text-red-400 transition-colors flex-shrink-0"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {showAddAttendee && (
         <AddAttendeeModal sessionId={sid!} onClose={() => setShowAddAttendee(false)} />
+      )}
+      {showAddEvidence && (
+        <AddEvidenceModal sessionId={sid!} onClose={() => setShowAddEvidence(false)} />
       )}
     </div>
   );
