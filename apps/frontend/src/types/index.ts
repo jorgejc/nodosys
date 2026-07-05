@@ -33,6 +33,8 @@ export interface User {
   nodoName: string | null;
   faculty?: string | null;
   program?: string | null;
+  facultyId?: string | null;
+  programId?: string | null;
   documentType?: DocumentType | null;
   documentNumber?: string | null;
   cedula?: string | null;

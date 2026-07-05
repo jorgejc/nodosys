@@ -53,19 +53,23 @@ export class UpdateUserDto {
   @ApiPropertyOptional()
   @IsString() @IsOptional()
   faculty?: string;
- 
+
   @ApiPropertyOptional()
   @IsString() @IsOptional()
   program?: string;
- 
+
+  @ApiPropertyOptional({ description: 'UUID del catálogo de facultades' })
+  @IsUUID('loose' as any) @IsOptional()
+  facultyId?: string;
+
+  @ApiPropertyOptional({ description: 'UUID del catálogo de programas' })
+  @IsUUID('loose' as any) @IsOptional()
+  programId?: string;
+
   @ApiPropertyOptional()
   @IsString() @IsOptional()
   phone?: string;
- 
-  @ApiPropertyOptional()
-  @IsString() @IsOptional()
-  position?: string;
- 
+
   @ApiPropertyOptional()
   @IsBoolean() @IsOptional()
   isActive?: boolean;

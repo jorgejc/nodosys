@@ -20,6 +20,7 @@ import { ActivitiesModule } from './modules/activities/activities.module';
 import { NodosModule } from './modules/nodos/nodos.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { ProcessesModule } from './modules/processes/processes.module';
+import { CatalogsModule } from './modules/catalogs/catalogs.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { ProcessesModule } from './modules/processes/processes.module';
     NodosModule,
     SessionsModule,
     ProcessesModule,
+    CatalogsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

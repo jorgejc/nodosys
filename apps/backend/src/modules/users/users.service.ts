@@ -49,8 +49,8 @@ export class UsersService {
       .select([
       'u.id', 'u.name', 'u.email', 'u.role',
       'u.documentType', 'u.documentNumber',
-      'u.faculty', 'u.program', 'u.nodoId', 'u.nodoName',
-      'u.phone', 'u.position', 'u.isActive', 'u.createdAt',
+      'u.faculty', 'u.program', 'u.facultyId', 'u.programId',
+      'u.nodoId', 'u.nodoName', 'u.phone', 'u.isActive', 'u.createdAt',
       ])
       .orderBy('u.name', 'ASC');
  
@@ -107,17 +107,18 @@ export class UsersService {
       email: dto.email,
       passwordHash: dto.password,
       role: dto.role as UserRole ?? UserRole.DOCENTE,
-      nodoId:   dto.nodoId   ?? creator.nodoId   ?? null,
-      nodoName: dto.nodoName ?? creator.nodoName ?? null,
-      faculty: dto.faculty ?? null,
-      program: dto.program ?? null,
-      phone: dto.phone ?? null,
-      position: dto.position ?? null,
+      nodoId:    dto.nodoId    ?? creator.nodoId   ?? null,
+      nodoName:  dto.nodoName  ?? creator.nodoName ?? null,
+      faculty:   dto.faculty   ?? null,
+      program:   dto.program   ?? null,
+      facultyId: dto.facultyId ?? null,
+      programId: dto.programId ?? null,
+      phone:     dto.phone     ?? null,
     });
 
     return this.repo.save(user);
   }
- 
+
   // Registro público (primer uso o auto-registro)
   async create(dto: CreateUserDto): Promise<User> {
     const existing = await this.repo.findOne({ where: { email: dto.email } });
@@ -126,12 +127,13 @@ export class UsersService {
       name: dto.name,
       email: dto.email,
       passwordHash: dto.password,
-      role: dto.role as UserRole ?? UserRole.DOCENTE,
-      nodoId: dto.nodoId ?? null,
-      faculty: dto.faculty ?? null,
-      program: dto.program ?? null,
-      phone: dto.phone ?? null,
-      position: dto.position ?? null,
+      role:      dto.role as UserRole ?? UserRole.DOCENTE,
+      nodoId:    dto.nodoId    ?? null,
+      faculty:   dto.faculty   ?? null,
+      program:   dto.program   ?? null,
+      facultyId: dto.facultyId ?? null,
+      programId: dto.programId ?? null,
+      phone:     dto.phone     ?? null,
     });
     return this.repo.save(user);
   }
