@@ -219,7 +219,7 @@ function UserModal({
       }
 
       if (isEdit && user?.id) return usersService.update(user.id, payload);
-      return usersService.register(payload);
+      return usersService.create(payload);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); onClose(); },
     onError: (e: unknown) => {

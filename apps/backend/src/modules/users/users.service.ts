@@ -129,6 +129,7 @@ export class UsersService {
       passwordHash: dto.password,
       role:      dto.role as UserRole ?? UserRole.DOCENTE,
       nodoId:    dto.nodoId    ?? null,
+      nodoName:  dto.nodoName  ?? null,
       faculty:   dto.faculty   ?? null,
       program:   dto.program   ?? null,
       facultyId: dto.facultyId ?? null,
@@ -137,7 +138,7 @@ export class UsersService {
     });
     return this.repo.save(user);
   }
- 
+
   async update(id: string, dto: UpdateUserDto, currentUser: User): Promise<User> {
     const user = await this.findById(id);
  
