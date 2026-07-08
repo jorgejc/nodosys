@@ -154,6 +154,12 @@ function UserModal({
   const cfg = ROLE_CFG[selectedRole];
   const isNodoRole = NODO_ROLES.includes(selectedRole);
 
+  // Campos de facultad/programa según el rol seleccionado en el formulario
+  const FACULTY_ROLES = ['decano', 'coordinador', 'docente', 'enlace'];
+  const PROGRAM_ROLES = ['coordinador', 'docente', 'enlace'];
+  const showFaculty = FACULTY_ROLES.includes(selectedRole);
+  const showProgram = PROGRAM_ROLES.includes(selectedRole);
+
   // Carga nodos existentes cuando el rol lo requiere
   const nodosQuery = useQuery({
     queryKey: ['nodos'],
@@ -173,7 +179,7 @@ function UserModal({
     queryFn:  () => selectedFacultyId
       ? catalogsService.getProgramsByFaculty(selectedFacultyId)
       : Promise.resolve([]),
-    enabled:  !!(cfg?.reqFaculty || cfg?.reqProgram || isAdmin),
+    enabled:  !!(showFaculty && selectedFacultyId),
     staleTime: 10 * 60 * 1000,
   });
 
@@ -204,18 +210,16 @@ function UserModal({
         if (data.nodoId)   payload.nodoId   = data.nodoId;
         if (data.nodoName) payload.nodoName = data.nodoName;
       }
-      // Facultad/programa: envía el UUID del catálogo + el nombre como texto (legacy)
-      if (cfg?.reqFaculty || cfg?.reqProgram || isAdmin || ['docente','decano','coordinador'].includes(selectedRole)) {
-        if (data.facultyId) {
-          payload.facultyId = data.facultyId;
-          const fac = facultiesQ.data?.find(f => f.id === data.facultyId);
-          if (fac) payload.faculty = fac.name;
-        }
-        if (data.programId) {
-          payload.programId = data.programId;
-          const prg = programsQ.data?.find(p => p.id === data.programId);
-          if (prg) payload.program = prg.name;
-        }
+      // Facultad/programa según el rol seleccionado
+      if (showFaculty && data.facultyId) {
+        payload.facultyId = data.facultyId;
+        const fac = facultiesQ.data?.find(f => f.id === data.facultyId);
+        if (fac) payload.faculty = fac.name;
+      }
+      if (showProgram && data.programId) {
+        payload.programId = data.programId;
+        const prg = programsQ.data?.find(p => p.id === data.programId);
+        if (prg) payload.program = prg.name;
       }
 
       if (isEdit && user?.id) return usersService.update(user.id, payload);
@@ -407,7 +411,7 @@ function UserModal({
           )}
 
           {/* Facultad — SELECT del catálogo */}
-          {(cfg?.reqFaculty || cfg?.reqProgram || isAdmin) && (
+          {showFaculty && (
             <div>
               <label className={`${lbl} ${cfg?.reqFaculty ? 'text-white' : ''}`}>
                 Facultad {cfg?.reqFaculty ? '*' : <span className="text-[#444] normal-case">(opcional)</span>}
@@ -427,7 +431,7 @@ function UserModal({
           )}
 
           {/* Programa — SELECT dependiente de la facultad */}
-          {(cfg?.reqProgram || ['decano','coordinador','docente'].includes(selectedRole)) && (
+          {showProgram && (
             <div>
               <label className={`${lbl} ${cfg?.reqProgram ? 'text-white' : ''}`}>
                 Programa {cfg?.reqProgram ? '*' : <span className="text-[#444] normal-case">(opcional)</span>}

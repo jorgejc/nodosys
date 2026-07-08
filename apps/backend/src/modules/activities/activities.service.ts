@@ -41,27 +41,16 @@ export class ActivitiesService {
     private readonly dataSource: DataSource,
   ) {}
 
-  // Roles que ven TODAS las actividades (sin filtro de nodo)
+  // Solo admin y vicerrector_extension ven/revisan TODAS las actividades
   private readonly GLOBAL_REVIEWERS: UserRole[] = [
-    UserRole.ADMIN, UserRole.VICERRECTOR_EXTENSION, UserRole.EQUIPO_EXTENSION,
-    UserRole.DECANO, UserRole.COORDINADOR,
-  ];
-
-  // Roles que gestionan actividades dentro de su nodo
-  private readonly NODO_ROLES: UserRole[] = [
-    UserRole.ENLACE, UserRole.MONITOR, UserRole.AUXILIAR,
+    UserRole.ADMIN, UserRole.VICERRECTOR_EXTENSION,
   ];
 
   // ── ¿Puede el usuario ver esta solicitud? ─────────────────
-  // Requiere que request.user esté cargado para verificar nodo.
   private canView(request: ActivityRequest, user: User): boolean {
     if (this.GLOBAL_REVIEWERS.includes(user.role)) return true;
-    if (request.userId === user.id) return true;
-    // ENLACE/MONITOR/AUXILIAR ven actividades de usuarios de su nodo
-    if (this.NODO_ROLES.includes(user.role)) {
-      return !!user.nodoId && request.user?.nodoId === user.nodoId;
-    }
-    return false;
+    // Todos los demás: solo las propias
+    return request.userId === user.id;
   }
 
   private canEdit(request: ActivityRequest, user: User): boolean {
@@ -84,10 +73,9 @@ export class ActivitiesService {
       .orderBy('r.activity_date', 'DESC');
 
     if (this.isReviewer(user)) {
-      // Roles globales: ven todas las actividades
-    } else if (this.NODO_ROLES.includes(user.role) && user.nodoId) {
-      qb.where('u.nodo_id = :nodoId', { nodoId: user.nodoId });
+      // Admin y vicerrector_extension: ven todas las actividades
     } else {
+      // Docente, enlace, y cualquier otro: solo las propias
       qb.where('r.user_id = :uid', { uid: user.id });
     }
 
@@ -179,7 +167,7 @@ export class ActivitiesService {
 
   // Aprobar o rechazar (admin/decano)
   async review(id: string, dto: ReviewActivityDto, reviewer: User): Promise<ActivityRequest> {
-    if (!this.isReviewer(reviewer)) throw new ForbiddenException('Solo administradores o decanos pueden revisar solicitudes');
+    if (!this.isReviewer(reviewer)) throw new ForbiddenException('Solo el administrador o el vicerrector de extensión pueden revisar solicitudes');
 
     const request = await this.findOne(id, reviewer);
     if (request.status !== RequestStatus.PENDIENTE) {

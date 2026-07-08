@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Param, Body,
-  Query, ParseUUIDPipe, UseGuards,
+  Query, ParseUUIDPipe, UseGuards, ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { UsersService } from './users.service';
@@ -19,27 +19,19 @@ import { User, UserRole } from './entities/user.entity';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  // GET /api/users/nodos — Lista de nodos distintos para el selector de inventario/reportes
+  // GET /api/users/nodos — selector de nodos (cualquier rol autenticado lo puede leer)
   @Get('nodos')
   @ApiOperation({ summary: 'Lista de nodos registrados en el sistema' })
   getNodos() {
     return this.usersService.getNodos();
   }
 
-  // GET /api/users — Admin, vicerrectores y decanos pueden listar usuarios
+  // GET /api/users — solo admin puede listar usuarios
   @Get()
   @UseGuards(RolesGuard)
-  @Roles(
-    UserRole.ADMIN,
-    UserRole.VICERRECTOR_EXTENSION,
-    UserRole.VICERRECTOR_ACADEMICO,
-    UserRole.EQUIPO_EXTENSION,
-    UserRole.DECANO,
-    UserRole.COORDINADOR,
-    UserRole.ENLACE,
-  )
-  @ApiOperation({ summary: 'Listar usuarios con filtros' })
-  @ApiQuery({ name: 'search',   required: false, description: 'Buscar por nombre, cédula o email' })
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Listar usuarios con filtros (solo admin)' })
+  @ApiQuery({ name: 'search',   required: false })
   @ApiQuery({ name: 'role',     required: false })
   @ApiQuery({ name: 'faculty',  required: false })
   @ApiQuery({ name: 'program',  required: false })
@@ -55,30 +47,39 @@ export class UsersController {
     return this.usersService.findAll(currentUser, { search, role, faculty, program, nodoId });
   }
 
-  // POST /api/users — Solo admin puede crear usuarios directamente
+  // POST /api/users — solo admin puede crear usuarios
   @Post()
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.ENLACE)
-  @ApiOperation({ summary: 'Crear usuario (admin o enlace para monitores/auxiliares)' })
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Crear usuario (solo admin)' })
   create(@Body() dto: CreateUserDto, @CurrentUser() creator: User) {
     return this.usersService.createByAdmin(dto, creator);
   }
 
-  // GET /api/users/:id
+  // GET /api/users/:id — admin o el propio usuario
   @Get(':id')
-  @ApiOperation({ summary: 'Obtener usuario por ID' })
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
+  @ApiOperation({ summary: 'Obtener usuario por ID (admin o self)' })
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() currentUser: User,
+  ) {
+    if (currentUser.role !== UserRole.ADMIN && currentUser.id !== id) {
+      throw new ForbiddenException('Solo puedes ver tu propio perfil');
+    }
     return this.usersService.findById(id);
   }
 
-  // PATCH /api/users/:id
+  // PATCH /api/users/:id — admin o el propio usuario
   @Patch(':id')
-  @ApiOperation({ summary: 'Actualizar usuario' })
+  @ApiOperation({ summary: 'Actualizar usuario (admin o self)' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateUserDto,
     @CurrentUser() currentUser: User,
   ) {
+    if (currentUser.role !== UserRole.ADMIN && currentUser.id !== id) {
+      throw new ForbiddenException('Solo puedes editar tu propio perfil');
+    }
     return this.usersService.update(id, dto, currentUser);
   }
 }

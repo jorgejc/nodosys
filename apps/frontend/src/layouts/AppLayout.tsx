@@ -16,29 +16,35 @@ import {
   LayoutDashboard, Package, ClipboardList, FileText,
   Users, LogOut, Menu, X, ChevronRight, Zap, Layers,
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth.store';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function AppLayout() {
-  const navigate  = useNavigate();
+  const navigate     = useNavigate();
+  const queryClient  = useQueryClient();
   const { user, logout } = useAuthStore();
-  const { canViewInventory, canAddInventory,
-          canViewOwnPlan, canViewAllPlans, canViewReports,
-          canManageUsers, canViewProcesos } = useAuth();
+  const { canViewInventory, canViewOwnPlan, canViewAllPlans,
+          canViewReports, canManageUsers, canViewProcesos,
+          canViewActividades } = useAuth();
   const [open, setOpen] = useState(true);
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  const handleLogout = () => {
+    queryClient.clear();  // limpia cache de TanStack Query antes de navegar
+    logout();             // limpia Zustand + localStorage (persist)
+    navigate('/login');
+  };
 
   const initials = user?.name.split(' ').slice(0,2).map(n => n[0]).join('').toUpperCase() ?? 'NS';
 
   // Construir nav según permisos
   const navItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', sub: 'Vista general', show: true },
-    { to: '/inventario', icon: Package, label: 'Inventario', sub: 'Equipos y materiales', show: canViewInventory || canAddInventory },
+    { to: '/inventario', icon: Package, label: 'Inventario', sub: 'Equipos y materiales', show: canViewInventory },
     { to: '/plan-trabajo', icon: ClipboardList, label: 'Plan de Trabajo', sub: 'Actividades y horas', show: canViewOwnPlan || canViewAllPlans },
     { to: '/reportes', icon: FileText, label: 'Reportes', sub: 'PDF y Excel', show: canViewReports },
     { to: '/usuarios', icon: Users, label: 'Usuarios', sub: 'Gestión de accesos', show: canManageUsers },
-    { to: '/actividades', icon: Zap, label: 'Actividades', sub: 'Viáticos y solicitudes', show: true },
+    { to: '/actividades', icon: Zap, label: 'Actividades', sub: 'Viáticos y solicitudes', show: canViewActividades },
     { to: '/procesos', icon: Layers, label: 'Procesos', sub: 'Cursos, clubes y talleres', show: canViewProcesos },
   ].filter(n => n.show);
 

@@ -30,26 +30,26 @@ export class WorkPlanService {
   ) {}
 
   // ── Puede el usuario ver este plan? ──────────────────────
-  // Requiere que plan.user esté cargado para la verificación por nodo.
   private canView(plan: WorkPlan, user: User): boolean {
     // Regla universal: siempre puede ver su propio plan
     if (plan.userId === user.id) return true;
 
     switch (user.role) {
       case UserRole.ADMIN:
-      case UserRole.VICERRECTOR_EXTENSION:
       case UserRole.VICERRECTOR_ACADEMICO:
       case UserRole.EQUIPO_EXTENSION:
         return true;
-      case UserRole.DECANO:
-        return !!user.faculty && plan.faculty === user.faculty;
+      case UserRole.DECANO: {
+        // Acepta coincidencia por texto de facultad (wp.faculty) o por facultyId del docente
+        const byText = !!user.faculty && plan.faculty === user.faculty;
+        const byId   = !!user.facultyId && !!plan.user?.facultyId
+                       && plan.user.facultyId === user.facultyId;
+        return byText || byId;
+      }
       case UserRole.COORDINADOR:
         return !!user.program && plan.program === user.program;
-      case UserRole.ENLACE:
-      case UserRole.MONITOR:
-      case UserRole.AUXILIAR:
-        // Ver planes de su nodo (el propio ya fue cubierto arriba)
-        return !!user.nodoId && plan.user?.nodoId === user.nodoId;
+      // Vicerrector_extension, enlace, docente y demás: solo su propio plan
+      // (cubierto por plan.userId === user.id al inicio)
       default:
         return false;
     }
@@ -72,29 +72,39 @@ async findAll(user: User): Promise<WorkPlan[]> {
     .leftJoinAndSelect('wp.axes', 'ax')
     .orderBy('wp.created_at', 'DESC');
  
-  const { role, id: userId, faculty, program, nodoId } = user;
+  const { role, id: userId, faculty, program } = user;
  
   if (
     role === UserRole.ADMIN ||
-    role === UserRole.VICERRECTOR_EXTENSION ||
     role === UserRole.VICERRECTOR_ACADEMICO ||
     role === UserRole.EQUIPO_EXTENSION
   ) {
-    // Ven todos los planes de todos los nodos y docentes
-  } else if (role === UserRole.DECANO && faculty) {
-    // Solo docentes de su facultad
-    qb.where('u.faculty = :faculty', { faculty });
+    // Admin y vicerrector_academico ven todos los planes
+  } else if (role === UserRole.DECANO) {
+    // Decano: planes cuya facultad coincida con la suya.
+    // Compara wp.faculty (texto guardado en el plan) para cubrir el caso
+    // de docentes cuyo user.faculty pueda estar vacío pero el plan sí tiene valor.
+    // También acepta coincidencia por facultyId cuando el docente lo tiene registrado.
+    const conditions: string[] = [];
+    const params: Record<string, string> = {};
+    if (faculty) {
+      conditions.push('wp.faculty = :faculty');
+      params.faculty = faculty;
+    }
+    if (user.facultyId) {
+      conditions.push('u.faculty_id = :facultyId');
+      params.facultyId = user.facultyId;
+    }
+    if (conditions.length > 0) {
+      qb.where(`(${conditions.join(' OR ')})`, params);
+    } else {
+      qb.where('1=0'); // Decano sin facultad asignada: no ve ningún plan
+    }
   } else if (role === UserRole.COORDINADOR && program) {
     // Solo docentes de su programa
     qb.where('u.program = :program', { program });
-  } else if (
-    (role === UserRole.ENLACE || role === UserRole.MONITOR || role === UserRole.AUXILIAR)
-    && nodoId
-  ) {
-    // Enlace/monitor/auxiliar: planes de todos los usuarios de su nodo
-    qb.where('u.nodo_id = :nodoId', { nodoId });
   } else {
-    // Docente sin nodo: solo su propio plan
+    // Docente, enlace, vicerrector_extension y cualquier otro: solo su propio plan
     qb.where('wp.user_id = :userId', { userId });
   }
  
@@ -137,6 +147,11 @@ async findAll(user: User): Promise<WorkPlan[]> {
   }
 
   async create(dto: CreateWorkPlanDto, user: User): Promise<WorkPlan> {
+    // Decano y coordinador no tienen plan propio; solo revisan
+    if ([UserRole.DECANO, UserRole.COORDINADOR].includes(user.role)) {
+      throw new ForbiddenException('Este rol no puede crear planes de trabajo');
+    }
+
     // Verificar que no exista un plan activo para el mismo semestre
     const existing = await this.planRepo.findOne({
       where: { userId: user.id, semester: dto.semester },

@@ -43,33 +43,41 @@ export function useAuth() {
   const isGlobalViewer = isAdmin || isViceExt || isViceAcad || isEquipoExt;
  
   // ── Inventario ─────────────────────────────────────────
-  const canViewInventory   = hasRole('admin','vicerrector_extension','vicerrector_academico','equipo_extension','decano','coordinador','enlace','docente','monitor','auxiliar');
-  const canAddInventory    = hasRole('admin','enlace','monitor','auxiliar');
-  const canEditInventory   = hasRole('admin','enlace');
+  // Lectura: admin, vicerrector_extension, enlace, monitor, auxiliar
+  // Escritura: admin, vicerrector_extension, enlace
+  const canViewInventory   = hasRole('admin','vicerrector_extension','enlace','monitor','auxiliar');
+  const canAddInventory    = hasRole('admin','vicerrector_extension','enlace');
+  const canEditInventory   = hasRole('admin','vicerrector_extension','enlace');
   const canDeleteInventory = hasRole('admin','enlace');
- 
+
   // ── Planes de trabajo ──────────────────────────────────
-  const canViewOwnPlan     = hasRole('admin','vicerrector_extension','vicerrector_academico','equipo_extension','decano','coordinador','enlace','docente');
-  const canViewAllPlans    = hasRole('admin','vicerrector_extension','vicerrector_academico');
+  // vicerrector_extension NO tiene planes; ve solo actividades e inventarios
+  const canViewOwnPlan      = hasRole('admin','vicerrector_academico','equipo_extension','decano','coordinador','enlace','docente');
+  const canViewAllPlans     = hasRole('admin','vicerrector_academico','equipo_extension');
   const canViewFacultyPlans = hasRole('decano','coordinador');
-  const canEditPlan        = hasRole('admin','enlace','docente');
-  const canAddDeanObs      = hasRole('admin','decano','vicerrector_academico');
- 
+  const canEditPlan         = hasRole('admin','enlace','docente');
+  const canAddDeanObs       = hasRole('admin','decano','vicerrector_academico');
+
   // ── Actividades ────────────────────────────────────────
-  const canViewAllActivities = hasRole('admin','vicerrector_extension','equipo_extension');
-  const canReviewActivities  = hasRole('admin','vicerrector_extension','decano');
+  const canViewActividades   = hasRole('admin','vicerrector_extension','equipo_extension','enlace','docente');
+  const canViewAllActivities = hasRole('admin','vicerrector_extension');
+  const canReviewActivities  = hasRole('admin','vicerrector_extension');
 
   // ── Procesos ───────────────────────────────────────────
-  const canViewProcesos  = hasRole('admin','vicerrector_extension','vicerrector_academico','equipo_extension','decano','coordinador','enlace','docente');
-  const canCreateProceso = hasRole('admin','vicerrector_extension','vicerrector_academico','equipo_extension','decano','coordinador','enlace','docente');
+  const canViewProcesos  = hasRole('admin','equipo_extension','enlace','docente');
+  const canCreateProceso = hasRole('admin','equipo_extension','enlace','docente');
 
   // ── Usuarios ───────────────────────────────────────────
-  const canManageUsers = hasRole('admin','enlace','vicerrector_extension','decano','coordinador');
-  const canCreateUsers = hasRole('admin','enlace');
+  const canManageUsers = hasRole('admin');
+  const canCreateUsers = hasRole('admin');
   const canAssignRoles = hasRole('admin');
- 
+
   // ── Reportes ───────────────────────────────────────────
-  const canViewReports = hasRole('admin','vicerrector_extension','vicerrector_academico','equipo_extension','decano','coordinador','enlace','docente');
+  // Reportes de inventario: quien puede ver inventario
+  const canViewInventoryReports = hasRole('admin','vicerrector_extension','enlace','monitor','auxiliar');
+  // Reportes de planes: quien puede ver planes
+  const canViewPlanReports = hasRole('admin','vicerrector_academico','equipo_extension','decano','coordinador','enlace','docente');
+  const canViewReports = canViewInventoryReports || canViewPlanReports;
  
   return {
     user, role,
@@ -78,13 +86,13 @@ export function useAuth() {
     // Planes
     canViewOwnPlan, canViewAllPlans, canViewFacultyPlans, canEditPlan, canAddDeanObs,
     // Actividades
-    canViewAllActivities, canReviewActivities,
+    canViewActividades, canViewAllActivities, canReviewActivities,
     // Procesos
     canViewProcesos, canCreateProceso,
     // Usuarios
     canManageUsers, canCreateUsers, canAssignRoles,
     // Reportes
-    canViewReports,
+    canViewReports, canViewInventoryReports, canViewPlanReports,
     // Helpers
     isAdmin, isViceExt, isViceAcad, isEquipoExt,
     isDecano, isCoord, isEnlace, isDocente, isMonAux,

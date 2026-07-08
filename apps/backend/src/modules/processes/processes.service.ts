@@ -10,11 +10,9 @@ import { User, UserRole } from '../users/entities/user.entity';
 
 @Injectable()
 export class ProcessesService {
+  // Solo admin ve todos los procesos; cualquier otro usuario ve solo los suyos
   private readonly globalRoles: UserRole[] = [
     UserRole.ADMIN,
-    UserRole.VICERRECTOR_EXTENSION,
-    UserRole.VICERRECTOR_ACADEMICO,
-    UserRole.EQUIPO_EXTENSION,
   ];
 
   constructor(
@@ -30,7 +28,7 @@ export class ProcessesService {
       name:            dto.name,
       description:     dto.description ?? null,
       type:            dto.type,
-      nodoId:          dto.nodoId ?? (this.isNodoRole(user.role) ? user.nodoId : null),
+      nodoId:          dto.nodoId ?? user.nodoId ?? null,
       workPlanTaskId:  dto.workPlanTaskId ?? null,
       createdBy:       user.id,
       status:          ProcessStatus.ACTIVO,
@@ -49,15 +47,9 @@ export class ProcessesService {
       .orderBy('p.createdAt', 'DESC');
 
     if (this.globalRoles.includes(user.role)) {
-      // sin filtro
-    } else if (user.role === UserRole.DECANO || user.role === UserRole.COORDINADOR) {
-      qb.where('p.created_by = :uid', { uid: user.id });
-    } else if (this.isNodoRole(user.role) && user.nodoId) {
-      qb.where('(p.nodo_id = :nodoId OR p.created_by = :uid)', {
-        nodoId: user.nodoId,
-        uid:    user.id,
-      });
+      // Admin: sin filtro, ve todos
     } else {
+      // Docente, enlace y cualquier otro: solo los propios
       qb.where('p.created_by = :uid', { uid: user.id });
     }
 
@@ -97,18 +89,12 @@ export class ProcessesService {
 
   private canAccess(process: Process, user: User): boolean {
     if (this.globalRoles.includes(user.role)) return true;
-    if (process.createdBy === user.id) return true;
-    if (this.isNodoRole(user.role) && user.nodoId && process.nodoId === user.nodoId) return true;
-    return false;
+    return process.createdBy === user.id;
   }
 
   private canEdit(process: Process, user: User): boolean {
     if (user.role === UserRole.ADMIN) return true;
     return process.createdBy === user.id;
-  }
-
-  private isNodoRole(role: UserRole): boolean {
-    return [UserRole.ENLACE, UserRole.MONITOR, UserRole.AUXILIAR].includes(role);
   }
 
   async getReport(id: string, user: User) {

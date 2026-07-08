@@ -8,7 +8,7 @@
  *  - Consultas de resumen (cuántos hay, en qué estado, dónde están)
  */
 import {
-  Injectable, NotFoundException, BadRequestException,
+  Injectable, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
@@ -82,21 +82,16 @@ export class InventoryService {
   filters: { nodoId?: string; categoryId?: string; search?: string },
   user?: User,
 ): Promise<InventoryItem[]> {
-  // ── Filtro por nodo según rol ──────────────────────────
-  const globalRoles = [
-    'admin', 'vicerrector_extension', 'vicerrector_academico',
-    'equipo_extension', 'decano', 'coordinador',
-  ];
-  if (user && !globalRoles.includes(user.role)) {
+  // admin y vicerrector_extension no tienen filtro de nodo.
+  // enlace ve solo su propio nodo (el controller ya bloqueó otros roles).
+  const noFilter = ['admin', 'vicerrector_extension'];
+  if (user && !noFilter.includes(user.role)) {
     if (user.nodoId) {
-      // Enlace/docente/monitor/auxiliar — solo ve su nodo
       filters.nodoId = user.nodoId;
     } else {
-      // Sin nodo asignado — no ve ningún inventario
       return [];
     }
   }
-  // globalRoles sin filtro → ven todos los nodos
 
   // ── Query ──────────────────────────────────────────────
   const qb = this.itemRepo
@@ -176,14 +171,20 @@ export class InventoryService {
     return this.itemRepo.save(item);
   }
 
-  async updateItem(id: string, dto: UpdateInventoryItemDto): Promise<InventoryItem> {
+  async updateItem(id: string, dto: UpdateInventoryItemDto, user?: User): Promise<InventoryItem> {
     const item = await this.getItemById(id);
+    if (user?.role === 'enlace' && item.nodoId !== user.nodoId) {
+      throw new ForbiddenException('Solo puedes editar ítems de tu nodo');
+    }
     Object.assign(item, dto);
     return this.itemRepo.save(item);
   }
 
-  async deleteItem(id: string): Promise<void> {
+  async deleteItem(id: string, user?: User): Promise<void> {
     const item = await this.getItemById(id);
+    if (user?.role === 'enlace' && item.nodoId !== user.nodoId) {
+      throw new ForbiddenException('Solo puedes eliminar ítems de tu nodo');
+    }
 
     // Verificar que no tenga unidades activas
     const activeUnits = await this.unitRepo.count({
@@ -226,8 +227,12 @@ export class InventoryService {
     itemId: string,
     dto: CreateInventoryUnitDto,
     userId: string,
+    user?: User,
   ): Promise<InventoryUnit> {
-    await this.getItemById(itemId);
+    const parentItem = await this.getItemById(itemId);
+    if (user?.role === 'enlace' && parentItem.nodoId !== user.nodoId) {
+      throw new ForbiddenException('Solo puedes agregar unidades a ítems de tu nodo');
+    }
 
     // Si tiene serial, verificar que no esté duplicado
     if (dto.serialNumber) {
@@ -276,8 +281,12 @@ export class InventoryService {
     itemId: string,
     dto: CreateGenericUnitsDto,
     userId: string,
+    user?: User,
   ): Promise<InventoryUnit[]> {
-    await this.getItemById(itemId);
+    const parentItem = await this.getItemById(itemId);
+    if (user?.role === 'enlace' && parentItem.nodoId !== user.nodoId) {
+      throw new ForbiddenException('Solo puedes agregar unidades a ítems de tu nodo');
+    }
 
     const units: InventoryUnit[] = [];
     for (let i = 0; i < dto.quantity; i++) {
@@ -312,8 +321,12 @@ export class InventoryService {
     return saved;
   }
 
-  async updateUnit(id: string, dto: UpdateInventoryUnitDto): Promise<InventoryUnit> {
+  async updateUnit(id: string, dto: UpdateInventoryUnitDto, user?: User): Promise<InventoryUnit> {
     const unit = await this.getUnitById(id);
+    // getUnitById carga relations: ['item', 'item.category'], así que unit.item está disponible
+    if (user?.role === 'enlace' && unit.item?.nodoId !== user.nodoId) {
+      throw new ForbiddenException('Solo puedes editar unidades de tu nodo');
+    }
     Object.assign(unit, dto);
     return this.unitRepo.save(unit);
   }

@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { FileDown, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import api from '@/services/api';
 import { workPlanService } from '@/services/workplan.service';
+import { useAuth } from '@/hooks/useAuth';
 import type { WorkPlan } from '@/types';
 
 function DownloadButton({ label, icon: Icon, color, onClick, loading }: {
@@ -33,10 +34,12 @@ async function downloadFile(url: string, filename: string) {
 export default function ReportesPage() {
   const [loading, setLoading] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState('');
+  const { canViewInventoryReports, canViewPlanReports } = useAuth();
 
   const plansQuery = useQuery({
     queryKey: ['workplans'],
     queryFn: () => workPlanService.getAll(),
+    enabled: canViewPlanReports,
   });
   const plans = (plansQuery.data ?? []) as WorkPlan[];
 
@@ -56,11 +59,11 @@ export default function ReportesPage() {
       <div>
         <p className="text-xs font-mono text-[#555] uppercase tracking-widest mb-1">// MÓDULO DE REPORTES</p>
         <h1 className="text-2xl font-bold text-white">Reportes y Exportaciones</h1>
-        <p className="text-[#666] text-sm mt-1">Genera reportes en PDF y Excel del inventario y plan de trabajo</p>
+        <p className="text-[#666] text-sm mt-1">Genera reportes en PDF y Excel de los módulos que tienes disponibles</p>
       </div>
 
-      {/* Reportes de Inventario */}
-      <div className="bg-[#111] border border-[#2A2A2A] rounded-xl p-6">
+      {/* Reportes de Inventario — solo para roles con acceso al módulo */}
+      {canViewInventoryReports && <div className="bg-[#111] border border-[#2A2A2A] rounded-xl p-6">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 bg-green-400/10 border border-green-400/20 rounded-lg flex items-center justify-center">
             <span className="text-xl">📦</span>
@@ -106,10 +109,10 @@ export default function ReportesPage() {
             </ul>
           </div>
         </div>
-      </div>
+      </div>}
 
-      {/* Reportes de Plan de Trabajo */}
-      <div className="bg-[#111] border border-[#2A2A2A] rounded-xl p-6">
+      {/* Reportes de Plan de Trabajo — solo para roles con planes */}
+      {canViewPlanReports && <div className="bg-[#111] border border-[#2A2A2A] rounded-xl p-6">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 bg-[#FF6B2B]/10 border border-[#FF6B2B]/20 rounded-lg flex items-center justify-center">
             <span className="text-xl">📋</span>
@@ -176,7 +179,7 @@ export default function ReportesPage() {
             </ul>
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
