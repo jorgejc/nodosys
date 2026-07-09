@@ -40,6 +40,10 @@ export interface CourseSession {
   location: string | null;
   totalRegistered: number;
   experience: string | null;
+  temaTecnico: string | null;
+  herramientaSimulador: string | null;
+  desarrollo: string | null;
+  resultados: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -66,6 +70,10 @@ export interface CreateSessionPayload {
   location?: string;
   totalRegistered?: number;
   experience?: string;
+  temaTecnico?: string;
+  herramientaSimulador?: string;
+  desarrollo?: string;
+  resultados?: string;
   moments?: {
     momentType: 'explorar' | 'crear' | 'consolidar';
     objective?: string;

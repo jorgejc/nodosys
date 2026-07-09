@@ -140,8 +140,16 @@ export interface InventoryMovement {
 }
 
 // ── Procesos ──────────────────────────────────────────────────────
-export type ProcessType   = 'curso' | 'club' | 'taller' | 'proceso';
-export type ProcessStatus = 'activo' | 'finalizado';
+export type ProcessType     = 'curso' | 'club' | 'taller' | 'proceso';
+export type ProcessStatus   = 'activo' | 'finalizado';
+export type SessionTemplate = 'tres_momentos' | 'descripcion_libre' | 'investigacion';
+
+export interface MissionAxis {
+  id: string;
+  name: string;
+  parentId: string | null;
+  children?: MissionAxis[];
+}
 
 export interface Process {
   id: string;
@@ -151,8 +159,13 @@ export interface Process {
   status: ProcessStatus;
   nodoId: string | null;
   workPlanTaskId: string | null;
+  strategyId: string | null;
+  missionAxisId: string | null;
+  sessionTemplate: SessionTemplate;
   createdBy: string;
   creator?: { id: string; name: string; email: string };
+  strategy?: { id: string; name: string } | null;
+  missionAxis?: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
 }

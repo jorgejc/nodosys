@@ -7,6 +7,7 @@ import { CourseSession } from './entities/course-session.entity';
 import { SessionMoment, MomentType } from './entities/session-moment.entity';
 import { SessionAttendee } from './entities/session-attendee.entity';
 import { SessionEvidence } from './entities/session-evidence.entity';
+import { Process, SessionTemplate } from '../processes/entities/process.entity';
 import {
   CreateSessionDto, UpdateSessionDto,
   AddAttendeeDto, UpdateAttendeeDto,
@@ -28,6 +29,9 @@ export class SessionsService {
 
     @InjectRepository(SessionEvidence)
     private readonly evidenceRepo: Repository<SessionEvidence>,
+
+    @InjectRepository(Process)
+    private readonly processRepo: Repository<Process>,
 
     private readonly dataSource: DataSource,
   ) {}
@@ -67,38 +71,47 @@ export class SessionsService {
     dto: CreateSessionDto,
     user: User,
   ): Promise<CourseSession> {
+    const process = await this.processRepo.findOne({ where: { id: processId } });
+    const template = process?.sessionTemplate ?? SessionTemplate.TRES_MOMENTOS;
+
     const count = await this.sessionRepo.count({ where: { processId } });
 
     const session = this.sessionRepo.create({
-      activityId:      null,
+      activityId:          null,
       processId,
-      sessionNumber:   count + 1,
-      date:            dto.date,
-      startTime:       dto.startTime ?? null,
-      endTime:         dto.endTime ?? null,
-      topic:           dto.topic ?? null,
-      location:        dto.location ?? null,
-      totalRegistered: dto.totalRegistered ?? 0,
-      experience:      dto.experience ?? null,
-      createdBy:       user.id,
+      sessionNumber:       count + 1,
+      date:                dto.date,
+      startTime:           dto.startTime ?? null,
+      endTime:             dto.endTime ?? null,
+      topic:               dto.topic ?? null,
+      location:            dto.location ?? null,
+      totalRegistered:     dto.totalRegistered ?? 0,
+      experience:          dto.experience ?? null,
+      temaTecnico:         dto.temaTecnico ?? null,
+      herramientaSimulador: dto.herramientaSimulador ?? null,
+      desarrollo:          dto.desarrollo ?? null,
+      resultados:          dto.resultados ?? null,
+      createdBy:           user.id,
     });
 
     const saved = await this.sessionRepo.save(session);
 
-    const momentTypes = [MomentType.EXPLORAR, MomentType.CREAR, MomentType.CONSOLIDAR];
-    const momentsToSave = momentTypes.map((mt) => {
-      const incoming = dto.moments?.find((m) => m.momentType === mt);
-      return this.momentRepo.create({
-        sessionId:       saved.id,
-        momentType:      mt,
-        objective:       incoming?.objective       ?? null,
-        methodology:     incoming?.methodology     ?? null,
-        materials:       incoming?.materials       ?? null,
-        durationMinutes: incoming?.durationMinutes ?? null,
+    if (template === SessionTemplate.TRES_MOMENTOS) {
+      const momentTypes = [MomentType.EXPLORAR, MomentType.CREAR, MomentType.CONSOLIDAR];
+      const momentsToSave = momentTypes.map((mt) => {
+        const incoming = dto.moments?.find((m) => m.momentType === mt);
+        return this.momentRepo.create({
+          sessionId:       saved.id,
+          momentType:      mt,
+          objective:       incoming?.objective       ?? null,
+          methodology:     incoming?.methodology     ?? null,
+          materials:       incoming?.materials       ?? null,
+          durationMinutes: incoming?.durationMinutes ?? null,
+        });
       });
-    });
+      await this.momentRepo.save(momentsToSave);
+    }
 
-    await this.momentRepo.save(momentsToSave);
     return this.findOne(saved.id);
   }
 
@@ -169,13 +182,17 @@ export class SessionsService {
 
     // Actualizar campos de la sesión
     Object.assign(session, {
-      date:             dto.date            ?? session.date,
-      startTime:        dto.startTime       ?? session.startTime,
-      endTime:          dto.endTime         ?? session.endTime,
-      topic:            dto.topic           ?? session.topic,
-      location:         dto.location        ?? session.location,
-      totalRegistered:  dto.totalRegistered ?? session.totalRegistered,
-      experience:       dto.experience      !== undefined ? dto.experience : session.experience,
+      date:                 dto.date                 ?? session.date,
+      startTime:            dto.startTime            ?? session.startTime,
+      endTime:              dto.endTime              ?? session.endTime,
+      topic:                dto.topic                ?? session.topic,
+      location:             dto.location             ?? session.location,
+      totalRegistered:      dto.totalRegistered      ?? session.totalRegistered,
+      experience:           dto.experience           !== undefined ? dto.experience           : session.experience,
+      temaTecnico:          dto.temaTecnico          !== undefined ? dto.temaTecnico          : session.temaTecnico,
+      herramientaSimulador: dto.herramientaSimulador !== undefined ? dto.herramientaSimulador : session.herramientaSimulador,
+      desarrollo:           dto.desarrollo           !== undefined ? dto.desarrollo           : session.desarrollo,
+      resultados:           dto.resultados           !== undefined ? dto.resultados           : session.resultados,
     });
     await this.sessionRepo.save(session);
 

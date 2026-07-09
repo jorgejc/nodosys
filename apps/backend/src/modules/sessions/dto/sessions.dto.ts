@@ -60,6 +60,22 @@ export class CreateSessionDto {
   @IsString() @IsOptional()
   experience?: string;
 
+  @ApiPropertyOptional({ example: 'Inteligencia artificial aplicada' })
+  @IsString() @MaxLength(500) @IsOptional()
+  temaTecnico?: string;
+
+  @ApiPropertyOptional({ example: 'MIT App Inventor' })
+  @IsString() @MaxLength(300) @IsOptional()
+  herramientaSimulador?: string;
+
+  @ApiPropertyOptional({ example: 'Se trabajó la creación de modelos...' })
+  @IsString() @IsOptional()
+  desarrollo?: string;
+
+  @ApiPropertyOptional({ example: 'Los estudiantes lograron construir...' })
+  @IsString() @IsOptional()
+  resultados?: string;
+
   @ApiPropertyOptional({
     type: [MomentDto],
     description: 'Array de 3 momentos: explorar, crear, consolidar',

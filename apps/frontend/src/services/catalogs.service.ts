@@ -24,6 +24,13 @@ export interface Strategy {
   name: string;
 }
 
+export interface MissionAxisItem {
+  id: string;
+  name: string;
+  parentId: string | null;
+  children?: MissionAxisItem[];
+}
+
 export const catalogsService = {
   getFaculties: () =>
     api.get<Faculty[]>('/faculties').then(r => r.data),
@@ -39,4 +46,7 @@ export const catalogsService = {
 
   getStrategies: () =>
     api.get<Strategy[]>('/strategies').then(r => r.data),
+
+  getMissionAxes: () =>
+    api.get<MissionAxisItem[]>('/mission-axes').then(r => r.data),
 };

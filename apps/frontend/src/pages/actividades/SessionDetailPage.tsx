@@ -7,10 +7,12 @@ import {
   Calendar, Clock, MapPin, FileText, Link2,
 } from 'lucide-react';
 import { sessionsService, type SessionAttendee, type SessionEvidence } from '@/services/sessions.service';
+import { processesService } from '@/services/processes.service';
 import { useAuth } from '@/hooks/useAuth';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { loadInstitutionalAssets, getInstitutionalMargins, applyInstitutionalLayout } from '@/utils/pdfLayout';
+import type { SessionTemplate } from '@/types';
 
 // ── Helpers ───────────────────────────────────────────────
 function fmt(d: string) {
@@ -28,16 +30,15 @@ const MOMENT_META = {
 // ── PDF export ────────────────────────────────────────────
 type SessionData = Awaited<ReturnType<typeof sessionsService.getById>>;
 
-async function exportPDF(session: SessionData, contextTitle: string, teacherName: string): Promise<void> {
+async function exportPDF(session: SessionData, contextTitle: string, teacherName: string, template: SessionTemplate): Promise<void> {
   const assets  = await loadInstitutionalAssets();
   const margins = getInstitutionalMargins(assets);
   const doc    = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
   const W      = 210;
   const margin = margins.left;
-  const pbY    = 297 - margins.bottom - 5; // page-break threshold
+  const pbY    = 297 - margins.bottom - 5;
   let y        = margins.top;
 
-  // Título
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   doc.text('BITÁCORA DE SESIÓN', W / 2, y, { align: 'center' });
@@ -50,7 +51,6 @@ async function exportPDF(session: SessionData, contextTitle: string, teacherName
   doc.text(titleLines, W / 2, y, { align: 'center' });
   y += titleLines.length * 5 + 4;
 
-  // Datos de la sesión
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(9);
 
@@ -74,47 +74,86 @@ async function exportPDF(session: SessionData, contextTitle: string, teacherName
   });
   y = (doc as any).lastAutoTable.finalY + 6;
 
-  // 3 Momentos pedagógicos
-  const ORDER   = ['explorar', 'crear', 'consolidar'] as const;
-  const LABELS: Record<string, string> = {
-    explorar:   '1. EXPLORAR — Activación de saberes previos',
-    crear:      '2. CREAR — Desarrollo y práctica',
-    consolidar: '3. CONSOLIDAR — Cierre y evaluación',
-  };
+  if (template === 'tres_momentos') {
+    const ORDER   = ['explorar', 'crear', 'consolidar'] as const;
+    const LABELS: Record<string, string> = {
+      explorar:   '1. EXPLORAR — Activación de saberes previos',
+      crear:      '2. CREAR — Desarrollo y práctica',
+      consolidar: '3. CONSOLIDAR — Cierre y evaluación',
+    };
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('MOMENTOS PEDAGÓGICOS', margin, y);
-  y += 4;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('MOMENTOS PEDAGÓGICOS', margin, y);
+    y += 4;
 
-  autoTable(doc, {
-    startY: y,
-    head: [['Momento', 'Objetivo', 'Metodología', 'Materiales', 'Duración']],
-    body: ORDER.map((mt) => {
-      const m = session.moments.find((mo) => mo.momentType === mt);
-      return [
-        LABELS[mt],
-        m?.objective    ?? '',
-        m?.methodology  ?? '',
-        m?.materials    ?? '',
-        m?.durationMinutes ? `${m.durationMinutes} min` : '',
-      ];
-    }),
-    theme: 'striped',
-    headStyles: { fillColor: [255, 107, 43], textColor: 255, fontSize: 8 },
-    styles: { fontSize: 8, cellPadding: 3, valign: 'top' },
-    columnStyles: {
-      0: { cellWidth: 42, fontStyle: 'bold' },
-      1: { cellWidth: 34 },
-      2: { cellWidth: 34 },
-      3: { cellWidth: 34 },
-      4: { cellWidth: 18, halign: 'center' },
-    },
-    margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
-  });
-  y = (doc as any).lastAutoTable.finalY + 6;
+    autoTable(doc, {
+      startY: y,
+      head: [['Momento', 'Objetivo', 'Metodología', 'Materiales', 'Duración']],
+      body: ORDER.map((mt) => {
+        const m = session.moments.find((mo) => mo.momentType === mt);
+        return [
+          LABELS[mt],
+          m?.objective    ?? '',
+          m?.methodology  ?? '',
+          m?.materials    ?? '',
+          m?.durationMinutes ? `${m.durationMinutes} min` : '',
+        ];
+      }),
+      theme: 'striped',
+      headStyles: { fillColor: [255, 107, 43], textColor: 255, fontSize: 8 },
+      styles: { fontSize: 8, cellPadding: 3, valign: 'top' },
+      columnStyles: {
+        0: { cellWidth: 42, fontStyle: 'bold' },
+        1: { cellWidth: 34 },
+        2: { cellWidth: 34 },
+        3: { cellWidth: 34 },
+        4: { cellWidth: 18, halign: 'center' },
+      },
+      margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
+    });
+    y = (doc as any).lastAutoTable.finalY + 6;
+  }
 
-  // Experiencia / Descripción narrativa
+  if (template === 'investigacion') {
+    if (y > pbY - 20) { doc.addPage(); y = margins.top; }
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('INVESTIGACIÓN', margin, y);
+    y += 4;
+
+    autoTable(doc, {
+      startY: y,
+      body: [
+        ['Tema técnico', session.temaTecnico ?? '—'],
+        ['Herramienta / Simulador', session.herramientaSimulador ?? '—'],
+      ],
+      theme: 'grid',
+      styles: { fontSize: 9, cellPadding: 2.5 },
+      columnStyles: {
+        0: { fontStyle: 'bold', fillColor: [245, 245, 245], cellWidth: 50 },
+        1: {},
+      },
+      margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
+    });
+    y = (doc as any).lastAutoTable.finalY + 4;
+
+    for (const [label, value] of [['DESARROLLO DE LA SESIÓN', session.desarrollo], ['RESULTADOS', session.resultados]] as const) {
+      if (value) {
+        if (y > pbY) { doc.addPage(); y = margins.top; }
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, margin, y);
+        y += 4;
+        doc.setFont('helvetica', 'normal');
+        const lines = doc.splitTextToSize(value, W - margin * 2);
+        if (y + lines.length * 4.5 > pbY) { doc.addPage(); y = margins.top; }
+        doc.text(lines, margin, y);
+        y += lines.length * 4.5 + 5;
+      }
+    }
+  }
+
   if (session.experience) {
     if (y > pbY) { doc.addPage(); y = margins.top; }
     doc.setFontSize(10);
@@ -129,7 +168,6 @@ async function exportPDF(session: SessionData, contextTitle: string, teacherName
     y += expLines.length * 4.5 + 6;
   }
 
-  // Lista de asistentes
   if (session.attendees.length > 0) {
     if (y > pbY - 20) { doc.addPage(); y = margins.top; }
     doc.setFontSize(10);
@@ -162,7 +200,6 @@ async function exportPDF(session: SessionData, contextTitle: string, teacherName
     y = (doc as any).lastAutoTable.finalY + 8;
   }
 
-  // Evidencias
   const evidences = session.evidences ?? [];
   if (evidences.length > 0) {
     if (y > pbY) { doc.addPage(); y = margins.top; }
@@ -174,10 +211,7 @@ async function exportPDF(session: SessionData, contextTitle: string, teacherName
     autoTable(doc, {
       startY: y,
       head: [['Descripción', 'URL / Enlace']],
-      body: evidences.map((ev) => [
-        ev.caption ?? '(sin descripción)',
-        ev.fileUrl,
-      ]),
+      body: evidences.map((ev) => [ev.caption ?? '(sin descripción)', ev.fileUrl]),
       theme: 'striped',
       headStyles: { fillColor: [40, 40, 40], textColor: 255, fontSize: 8 },
       styles: { fontSize: 7, cellPadding: 3, valign: 'top' },
@@ -190,7 +224,6 @@ async function exportPDF(session: SessionData, contextTitle: string, teacherName
     y = (doc as any).lastAutoTable.finalY + 8;
   }
 
-  // Firmas
   if (y > pbY) { doc.addPage(); y = margins.top; }
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
@@ -361,17 +394,30 @@ export default function SessionDetailPage() {
   const [showAddEvidence,  setShowAddEvidence]  = useState(false);
   const [generatingPDF,    setGeneratingPDF]    = useState(false);
 
-  async function handleExportPDF(s: NonNullable<typeof q.data>) {
-    setGeneratingPDF(true);
-    try { await exportPDF(s, s.topic ?? `Sesión ${s.sessionNumber}`, user?.name ?? 'Docente'); }
-    finally { setGeneratingPDF(false); }
-  }
-
   const q = useQuery({
     queryKey: ['session', sid],
     queryFn: () => sessionsService.getById(sid!),
     enabled: !!sid,
   });
+
+  const s = q.data;
+
+  // Cargar el proceso padre para obtener la plantilla de sesión
+  const processQ = useQuery({
+    queryKey: ['process-template', s?.processId],
+    queryFn: () => processesService.getById(s!.processId!),
+    enabled: !!s?.processId,
+  });
+
+  const sessionTemplate: SessionTemplate = processQ.data?.sessionTemplate ?? 'tres_momentos';
+  const isTresMomentos  = sessionTemplate === 'tres_momentos';
+  const isInvestigacion = sessionTemplate === 'investigacion';
+
+  async function handleExportPDF(sess: NonNullable<typeof q.data>) {
+    setGeneratingPDF(true);
+    try { await exportPDF(sess, sess.topic ?? `Sesión ${sess.sessionNumber}`, user?.name ?? 'Docente', sessionTemplate); }
+    finally { setGeneratingPDF(false); }
+  }
 
   const deleteAttendeeM = useMutation({
     mutationFn: (attendeeId: string) => sessionsService.deleteAttendee(sid!, attendeeId),
@@ -397,7 +443,6 @@ export default function SessionDetailPage() {
     );
   }
 
-  const s = q.data;
   if (!s) return null;
 
   const canEdit = isDirector || s.createdBy === user?.id;
@@ -440,7 +485,7 @@ export default function SessionDetailPage() {
           </div>
           <div className="flex gap-2 flex-shrink-0">
             <button
-              onClick={() => handleExportPDF(s)}
+              onClick={() => handleExportPDF(s!)}
               disabled={generatingPDF}
               className="flex items-center gap-1.5 text-xs bg-[#1A1A1A] border border-[#2A2A2A] text-[#888] hover:text-white disabled:opacity-50 px-3 py-2 rounded-lg transition-colors"
             >
@@ -482,60 +527,102 @@ export default function SessionDetailPage() {
         </div>
       </div>
 
-      {/* 3 Momentos pedagógicos */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-white px-1">Momentos pedagógicos</h2>
-        {ORDER.map((mt) => {
-          const m = s.moments.find((mo) => mo.momentType === mt);
-          const meta = MOMENT_META[mt];
-          const isEmpty = !m?.objective && !m?.methodology && !m?.materials;
+      {/* Momentos pedagógicos (solo para tres_momentos) */}
+      {isTresMomentos && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold text-white px-1">Momentos pedagógicos</h2>
+          {ORDER.map((mt) => {
+            const m = s.moments.find((mo) => mo.momentType === mt);
+            const meta = MOMENT_META[mt];
+            const isEmpty = !m?.objective && !m?.methodology && !m?.materials;
 
-          return (
-            <div key={mt} className={`border ${meta.border} ${meta.bg} rounded-xl p-5`}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className={`font-semibold text-sm ${meta.color}`}>{meta.label}</h3>
-                {m?.durationMinutes && (
-                  <span className="text-xs text-[#555] bg-[#1A1A1A] px-2 py-0.5 rounded-full">
-                    {m.durationMinutes} min
-                  </span>
+            return (
+              <div key={mt} className={`border ${meta.border} ${meta.bg} rounded-xl p-5`}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className={`font-semibold text-sm ${meta.color}`}>{meta.label}</h3>
+                  {m?.durationMinutes && (
+                    <span className="text-xs text-[#555] bg-[#1A1A1A] px-2 py-0.5 rounded-full">
+                      {m.durationMinutes} min
+                    </span>
+                  )}
+                </div>
+
+                {isEmpty ? (
+                  <p className="text-xs text-[#444] italic">Sin información registrada en este momento.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {m?.objective && (
+                      <div>
+                        <p className="text-xs text-[#555] uppercase tracking-wider mb-1">Objetivo</p>
+                        <p className="text-sm text-[#CCC] whitespace-pre-wrap">{m.objective}</p>
+                      </div>
+                    )}
+                    {m?.methodology && (
+                      <div>
+                        <p className="text-xs text-[#555] uppercase tracking-wider mb-1">Metodología</p>
+                        <p className="text-sm text-[#CCC] whitespace-pre-wrap">{m.methodology}</p>
+                      </div>
+                    )}
+                    {m?.materials && (
+                      <div>
+                        <p className="text-xs text-[#555] uppercase tracking-wider mb-1">Materiales</p>
+                        <p className="text-sm text-[#CCC] whitespace-pre-wrap">{m.materials}</p>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              {isEmpty ? (
-                <p className="text-xs text-[#444] italic">Sin información registrada en este momento.</p>
-              ) : (
-                <div className="space-y-3">
-                  {m?.objective && (
-                    <div>
-                      <p className="text-xs text-[#555] uppercase tracking-wider mb-1">Objetivo</p>
-                      <p className="text-sm text-[#CCC] whitespace-pre-wrap">{m.objective}</p>
-                    </div>
-                  )}
-                  {m?.methodology && (
-                    <div>
-                      <p className="text-xs text-[#555] uppercase tracking-wider mb-1">Metodología</p>
-                      <p className="text-sm text-[#CCC] whitespace-pre-wrap">{m.methodology}</p>
-                    </div>
-                  )}
-                  {m?.materials && (
-                    <div>
-                      <p className="text-xs text-[#555] uppercase tracking-wider mb-1">Materiales</p>
-                      <p className="text-sm text-[#CCC] whitespace-pre-wrap">{m.materials}</p>
-                    </div>
-                  )}
+      {/* Campos de investigación */}
+      {isInvestigacion && (
+        <div className="bg-[#111] border border-amber-400/20 rounded-xl p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-amber-400">Investigación</h2>
+
+          {(s.temaTecnico || s.herramientaSimulador) && (
+            <div className="grid grid-cols-2 gap-4">
+              {s.temaTecnico && (
+                <div>
+                  <p className="text-xs text-[#555] uppercase tracking-wider mb-1">Tema técnico</p>
+                  <p className="text-sm text-white">{s.temaTecnico}</p>
+                </div>
+              )}
+              {s.herramientaSimulador && (
+                <div>
+                  <p className="text-xs text-[#555] uppercase tracking-wider mb-1">Herramienta / Simulador</p>
+                  <p className="text-sm text-white">{s.herramientaSimulador}</p>
                 </div>
               )}
             </div>
-          );
-        })}
-      </div>
+          )}
+
+          {s.desarrollo && (
+            <div>
+              <p className="text-xs text-[#555] uppercase tracking-wider mb-1">Desarrollo de la sesión</p>
+              <p className="text-sm text-[#CCC] whitespace-pre-wrap leading-relaxed">{s.desarrollo}</p>
+            </div>
+          )}
+
+          {s.resultados && (
+            <div>
+              <p className="text-xs text-[#555] uppercase tracking-wider mb-1">Resultados</p>
+              <p className="text-sm text-[#CCC] whitespace-pre-wrap leading-relaxed">{s.resultados}</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Descripción / Experiencia */}
       {(s.experience || canEdit) && (
         <div className="bg-[#111] border border-[#2A2A2A] rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <FileText size={15} className="text-[#FF6B2B]" />
-            <h2 className="text-sm font-semibold text-white">Descripción / Experiencia</h2>
+            <h2 className="text-sm font-semibold text-white">
+              {sessionTemplate === 'descripcion_libre' ? 'Descripción de la sesión' : 'Descripción / Experiencia'}
+            </h2>
           </div>
           {s.experience ? (
             <p className="text-sm text-[#CCC] whitespace-pre-wrap leading-relaxed">{s.experience}</p>

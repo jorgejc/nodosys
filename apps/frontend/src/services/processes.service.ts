@@ -32,6 +32,9 @@ export const processesService = {
     type?: string;
     nodoId?: string;
     workPlanTaskId?: string;
+    strategyId?: string;
+    missionAxisId?: string;
+    sessionTemplate?: string;
   }) => api.post<Process>('/processes', data).then((r) => r.data),
 
   update: (id: string, data: {
@@ -41,6 +44,9 @@ export const processesService = {
     status?: string;
     nodoId?: string;
     workPlanTaskId?: string;
+    strategyId?: string;
+    missionAxisId?: string;
+    sessionTemplate?: string;
   }) => api.patch<Process>(`/processes/${id}`, data).then((r) => r.data),
 
   getReport: (id: string) =>

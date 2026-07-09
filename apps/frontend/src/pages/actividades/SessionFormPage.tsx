@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Loader2, Save } from 'lucide-react';
 import { sessionsService } from '@/services/sessions.service';
+import { processesService } from '@/services/processes.service';
 
 // ── Schema ────────────────────────────────────────────────
 const momentSchema = z.object({
@@ -16,16 +17,22 @@ const momentSchema = z.object({
 });
 
 const schema = z.object({
-  date:             z.string().min(1, 'La fecha es obligatoria'),
-  startTime:        z.string().optional(),
-  endTime:          z.string().optional(),
-  topic:            z.string().max(300).optional(),
-  location:         z.string().max(300).optional(),
-  totalRegistered:  z.coerce.number().int().min(0).optional(),
-  experience:       z.string().optional(),
-  explorar:         momentSchema,
-  crear:            momentSchema,
-  consolidar:       momentSchema,
+  date:                 z.string().min(1, 'La fecha es obligatoria'),
+  startTime:            z.string().optional(),
+  endTime:              z.string().optional(),
+  topic:                z.string().max(300).optional(),
+  location:             z.string().max(300).optional(),
+  totalRegistered:      z.coerce.number().int().min(0).optional(),
+  experience:           z.string().optional(),
+  // Investigación
+  temaTecnico:          z.string().max(500).optional(),
+  herramientaSimulador: z.string().max(300).optional(),
+  desarrollo:           z.string().optional(),
+  resultados:           z.string().optional(),
+  // Momentos (solo para tres_momentos)
+  explorar:             momentSchema,
+  crear:                momentSchema,
+  consolidar:           momentSchema,
 });
 
 type FormData = z.infer<typeof schema>;
@@ -123,6 +130,22 @@ export default function SessionFormPage() {
     enabled: isEditing,
   });
 
+  // Determinar el processId efectivo (para edición, leer de la sesión)
+  const effectiveProcessId = isEditing
+    ? existingQ.data?.processId ?? undefined
+    : processId;
+
+  // Cargar el proceso padre para conocer la plantilla de sesión
+  const processQ = useQuery({
+    queryKey: ['process-template', effectiveProcessId],
+    queryFn: () => processesService.getById(effectiveProcessId!),
+    enabled: !!effectiveProcessId,
+  });
+
+  const sessionTemplate = processQ.data?.sessionTemplate ?? 'tres_momentos';
+  const isTresMomentos  = sessionTemplate === 'tres_momentos';
+  const isInvestigacion = sessionTemplate === 'investigacion';
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -137,13 +160,17 @@ export default function SessionFormPage() {
       const s = existingQ.data;
       const getM = (type: string) => s.moments.find((m) => m.momentType === type);
       reset({
-        date:            s.date,
-        startTime:       s.startTime ?? '',
-        endTime:         s.endTime ?? '',
-        topic:           s.topic ?? '',
-        location:        s.location ?? '',
-        totalRegistered: s.totalRegistered,
-        experience:      s.experience ?? '',
+        date:                 s.date,
+        startTime:            s.startTime ?? '',
+        endTime:              s.endTime ?? '',
+        topic:                s.topic ?? '',
+        location:             s.location ?? '',
+        totalRegistered:      s.totalRegistered,
+        experience:           s.experience ?? '',
+        temaTecnico:          s.temaTecnico ?? '',
+        herramientaSimulador: s.herramientaSimulador ?? '',
+        desarrollo:           s.desarrollo ?? '',
+        resultados:           s.resultados ?? '',
         explorar: {
           objective:       getM('explorar')?.objective       ?? '',
           methodology:     getM('explorar')?.methodology     ?? '',
@@ -166,20 +193,41 @@ export default function SessionFormPage() {
     }
   }, [existingQ.data, reset]);
 
-  const buildPayload = (data: FormData) => ({
-    date:            data.date,
-    startTime:       data.startTime  || undefined,
-    endTime:         data.endTime    || undefined,
-    topic:           data.topic      || undefined,
-    location:        data.location   || undefined,
-    totalRegistered: data.totalRegistered,
-    experience:      data.experience || undefined,
-    moments: [
-      { momentType: 'explorar'   as const, ...cleanMoment(data.explorar)   },
-      { momentType: 'crear'      as const, ...cleanMoment(data.crear)      },
-      { momentType: 'consolidar' as const, ...cleanMoment(data.consolidar) },
-    ],
-  });
+  const buildPayload = (data: FormData) => {
+    const base = {
+      date:            data.date,
+      startTime:       data.startTime  || undefined,
+      endTime:         data.endTime    || undefined,
+      topic:           data.topic      || undefined,
+      location:        data.location   || undefined,
+      totalRegistered: data.totalRegistered,
+      experience:      data.experience || undefined,
+    };
+
+    if (isTresMomentos) {
+      return {
+        ...base,
+        moments: [
+          { momentType: 'explorar'   as const, ...cleanMoment(data.explorar)   },
+          { momentType: 'crear'      as const, ...cleanMoment(data.crear)      },
+          { momentType: 'consolidar' as const, ...cleanMoment(data.consolidar) },
+        ],
+      };
+    }
+
+    if (isInvestigacion) {
+      return {
+        ...base,
+        temaTecnico:          data.temaTecnico          || undefined,
+        herramientaSimulador: data.herramientaSimulador || undefined,
+        desarrollo:           data.desarrollo           || undefined,
+        resultados:           data.resultados           || undefined,
+      };
+    }
+
+    // descripcion_libre
+    return base;
+  };
 
   const createM = useMutation({
     mutationFn: (data: FormData) =>
@@ -201,7 +249,6 @@ export default function SessionFormPage() {
     mutationFn: (data: FormData) => sessionsService.update(sid!, buildPayload(data)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['session', sid] });
-      // Backlink dinámico al editar: leer el processId de la sesión existente
       const s = existingQ.data;
       if (s?.processId) {
         qc.invalidateQueries({ queryKey: ['sessions', 'process', s.processId] });
@@ -215,13 +262,20 @@ export default function SessionFormPage() {
 
   const mutation = isEditing ? updateM : createM;
 
-  if (isEditing && existingQ.isLoading) {
+  const isLoading = (isEditing && existingQ.isLoading) || (!!effectiveProcessId && processQ.isLoading);
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-32">
         <Loader2 size={28} className="animate-spin text-[#FF6B2B]" />
       </div>
     );
   }
+
+  const templateLabel =
+    sessionTemplate === 'tres_momentos'     ? 'Tres momentos pedagógicos' :
+    sessionTemplate === 'investigacion'      ? 'Investigación' :
+    'Descripción libre';
 
   return (
     <div className="max-w-2xl space-y-6 pb-12">
@@ -243,7 +297,7 @@ export default function SessionFormPage() {
           {isEditing ? 'Editar bitácora' : 'Registrar sesión'}
         </h1>
         <p className="text-[#666] text-sm mt-1">
-          Documenta los 3 momentos pedagógicos de esta sesión.
+          Plantilla: <span className="text-[#FF6B2B]">{templateLabel}</span>
         </p>
       </div>
 
@@ -318,14 +372,68 @@ export default function SessionFormPage() {
           </div>
         </div>
 
-        {/* 3 Momentos pedagógicos */}
-        <MomentSection name="explorar"   register={register} errors={errors} />
-        <MomentSection name="crear"      register={register} errors={errors} />
-        <MomentSection name="consolidar" register={register} errors={errors} />
+        {/* Tres momentos pedagógicos */}
+        {isTresMomentos && (
+          <>
+            <MomentSection name="explorar"   register={register} errors={errors} />
+            <MomentSection name="crear"      register={register} errors={errors} />
+            <MomentSection name="consolidar" register={register} errors={errors} />
+          </>
+        )}
 
-        {/* Descripción / Experiencia */}
+        {/* Campos de investigación */}
+        {isInvestigacion && (
+          <div className="bg-[#111] border border-amber-400/20 rounded-xl p-5 space-y-4">
+            <div>
+              <h2 className="text-sm font-semibold text-amber-400">Investigación</h2>
+              <p className="text-xs text-[#555] mt-0.5">Campos específicos para sesiones de investigación</p>
+            </div>
+
+            <div>
+              <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">Tema técnico</label>
+              <input
+                {...register('temaTecnico')}
+                placeholder="Ej: Inteligencia artificial aplicada a la educación"
+                className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#444] outline-none focus:border-[#FF6B2B]"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">Herramienta / Simulador</label>
+              <input
+                {...register('herramientaSimulador')}
+                placeholder="Ej: MIT App Inventor, Arduino, Scratch"
+                className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#444] outline-none focus:border-[#FF6B2B]"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">Desarrollo de la sesión</label>
+              <textarea
+                {...register('desarrollo')}
+                rows={4}
+                placeholder="Describe cómo se desarrolló la sesión, metodología aplicada..."
+                className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#444] outline-none focus:border-[#FF6B2B] resize-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">Resultados</label>
+              <textarea
+                {...register('resultados')}
+                rows={3}
+                placeholder="¿Qué resultados o productos se obtuvieron?"
+                className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#444] outline-none focus:border-[#FF6B2B] resize-none"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Descripción / Experiencia (siempre visible) */}
         <div className="bg-[#111] border border-[#2A2A2A] rounded-xl p-5 space-y-2">
-          <h2 className="text-sm font-semibold text-white">Descripción / Experiencia de la sesión</h2>
+          <h2 className="text-sm font-semibold text-white">
+            {sessionTemplate === 'descripcion_libre' ? 'Descripción de la sesión' : 'Experiencia de la sesión'}
+          </h2>
           <p className="text-xs text-[#555]">Narra cómo fue la sesión: qué ocurrió, cómo respondieron los participantes, observaciones relevantes.</p>
           <textarea
             {...register('experience')}

@@ -43,6 +43,18 @@ export class CourseSession {
   @Column({ type: 'text', nullable: true })
   experience: string | null;
 
+  @Column({ name: 'tema_tecnico', type: 'varchar', length: 500, nullable: true })
+  temaTecnico: string | null;
+
+  @Column({ name: 'herramienta_simulador', type: 'varchar', length: 300, nullable: true })
+  herramientaSimulador: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  desarrollo: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  resultados: string | null;
+
   @Column({ name: 'created_by', type: 'uuid' })
   createdBy: string;
 

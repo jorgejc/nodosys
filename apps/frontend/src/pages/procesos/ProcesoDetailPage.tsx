@@ -9,7 +9,7 @@ import { processesService, type ProcessReport } from '@/services/processes.servi
 import { activitiesService } from '@/services/activities.service';
 import { useAuth } from '@/hooks/useAuth';
 import SessionsTab from '@/pages/actividades/SessionsTab';
-import type { ProcessType, ProcessStatus } from '@/types';
+import type { ProcessType, ProcessStatus, SessionTemplate } from '@/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { loadInstitutionalAssets, getInstitutionalMargins, applyInstitutionalLayout } from '@/utils/pdfLayout';
@@ -108,6 +108,8 @@ async function exportConsolidatedPDF(report: ProcessReport): Promise<void> {
   });
   y = (doc as any).lastAutoTable.finalY + 8;
 
+  const sessionTemplate: SessionTemplate = (p as any).sessionTemplate ?? 'tres_momentos';
+
   // ── Sesiones ────────────────────────────────────────────
   for (const session of sessions) {
     y = ensureSpace(doc, y, 50, margins.top, pbY);
@@ -144,34 +146,69 @@ async function exportConsolidatedPDF(report: ProcessReport): Promise<void> {
       y = (doc as any).lastAutoTable.finalY + 3;
     }
 
-    // Momentos
-    const ORDER = ['explorar', 'crear', 'consolidar'] as const;
-    autoTable(doc, {
-      startY: y,
-      head: [['Momento', 'Objetivo', 'Metodología', 'Materiales', 'Min']],
-      body: ORDER.map((mt) => {
-        const m = (session.moments ?? []).find((mo) => mo.momentType === mt);
-        return [
-          MOMENT_LABELS[mt] ?? mt,
-          m?.objective   ?? '',
-          m?.methodology ?? '',
-          m?.materials   ?? '',
-          m?.durationMinutes ? String(m.durationMinutes) : '',
-        ];
-      }),
-      theme: 'striped',
-      headStyles: { fillColor: [40, 40, 40], textColor: 255, fontSize: 7 },
-      styles: { fontSize: 7, cellPadding: 2, valign: 'top' },
-      columnStyles: {
-        0: { cellWidth: 28, fontStyle: 'bold' },
-        1: { cellWidth: 40 },
-        2: { cellWidth: 40 },
-        3: { cellWidth: 40 },
-        4: { cellWidth: 14, halign: 'center' },
-      },
-      margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
-    });
-    y = (doc as any).lastAutoTable.finalY + 4;
+    // Contenido según plantilla
+    if (sessionTemplate === 'tres_momentos') {
+      const ORDER = ['explorar', 'crear', 'consolidar'] as const;
+      autoTable(doc, {
+        startY: y,
+        head: [['Momento', 'Objetivo', 'Metodología', 'Materiales', 'Min']],
+        body: ORDER.map((mt) => {
+          const m = (session.moments ?? []).find((mo) => mo.momentType === mt);
+          return [
+            MOMENT_LABELS[mt] ?? mt,
+            m?.objective   ?? '',
+            m?.methodology ?? '',
+            m?.materials   ?? '',
+            m?.durationMinutes ? String(m.durationMinutes) : '',
+          ];
+        }),
+        theme: 'striped',
+        headStyles: { fillColor: [40, 40, 40], textColor: 255, fontSize: 7 },
+        styles: { fontSize: 7, cellPadding: 2, valign: 'top' },
+        columnStyles: {
+          0: { cellWidth: 28, fontStyle: 'bold' },
+          1: { cellWidth: 40 },
+          2: { cellWidth: 40 },
+          3: { cellWidth: 40 },
+          4: { cellWidth: 14, halign: 'center' },
+        },
+        margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
+      });
+      y = (doc as any).lastAutoTable.finalY + 4;
+    }
+
+    if (sessionTemplate === 'investigacion') {
+      const s = session as any;
+      autoTable(doc, {
+        startY: y,
+        body: [
+          ['Tema técnico', s.temaTecnico ?? '—'],
+          ['Herramienta / Simulador', s.herramientaSimulador ?? '—'],
+        ],
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2 },
+        columnStyles: {
+          0: { fontStyle: 'bold', fillColor: [245, 245, 245], cellWidth: 50 },
+          1: {},
+        },
+        margin: { left: margin, right: margin, top: margins.top, bottom: margins.bottom },
+      });
+      y = (doc as any).lastAutoTable.finalY + 3;
+      for (const [label, value] of [['Desarrollo', s.desarrollo], ['Resultados', s.resultados]] as const) {
+        if (value) {
+          y = ensureSpace(doc, y, 14, margins.top, pbY);
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`${label}:`, margin, y);
+          y += 4;
+          doc.setFont('helvetica', 'normal');
+          const lines = doc.splitTextToSize(value, W - margin * 2);
+          y = ensureSpace(doc, y, lines.length * 4, margins.top, pbY);
+          doc.text(lines, margin, y);
+          y += lines.length * 4 + 3;
+        }
+      }
+    }
 
     // Experiencia
     if (session.experience) {
@@ -444,6 +481,11 @@ export default function ProcesoDetailPage() {
               <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[p.status]}`}>
                 {STATUS_LABELS[p.status]}
               </span>
+              {p.sessionTemplate && p.sessionTemplate !== 'tres_momentos' && (
+                <span className="text-xs px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-400 border-amber-500/20">
+                  {p.sessionTemplate === 'investigacion' ? 'Investigación' : 'Desc. libre'}
+                </span>
+              )}
             </div>
             {p.description && (
               <p className="text-[#666] text-sm mt-1">{p.description}</p>
@@ -458,6 +500,16 @@ export default function ProcesoDetailPage() {
                 <Calendar size={11} />
                 {new Date(p.createdAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
               </span>
+              {p.strategy && (
+                <span className="flex items-center gap-1.5 text-xs text-[#555]">
+                  <Tag size={11} /> {p.strategy.name}
+                </span>
+              )}
+              {p.missionAxis && (
+                <span className="flex items-center gap-1.5 text-xs text-[#555]">
+                  <Tag size={11} /> {p.missionAxis.name}
+                </span>
+              )}
               {p.workPlanTaskId && (
                 <span className="flex items-center gap-1.5 text-xs text-[#555]">
                   <Tag size={11} /> Vinculado a plan de trabajo

@@ -3,7 +3,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Process, ProcessStatus } from './entities/process.entity';
+import { Process, ProcessStatus, SessionTemplate } from './entities/process.entity';
 import { CourseSession } from '../sessions/entities/course-session.entity';
 import { CreateProcessDto, UpdateProcessDto } from './dto/processes.dto';
 import { User, UserRole } from '../users/entities/user.entity';
@@ -30,6 +30,9 @@ export class ProcessesService {
       type:            dto.type,
       nodoId:          dto.nodoId ?? user.nodoId ?? null,
       workPlanTaskId:  dto.workPlanTaskId ?? null,
+      strategyId:      dto.strategyId ?? null,
+      missionAxisId:   dto.missionAxisId ?? null,
+      sessionTemplate: dto.sessionTemplate ?? SessionTemplate.TRES_MOMENTOS,
       createdBy:       user.id,
       status:          ProcessStatus.ACTIVO,
     });
@@ -39,10 +42,15 @@ export class ProcessesService {
   async findAll(user: User): Promise<Process[]> {
     const qb = this.repo.createQueryBuilder('p')
       .leftJoinAndSelect('p.creator', 'creator')
+      .leftJoinAndSelect('p.strategy', 'strategy')
+      .leftJoinAndSelect('p.missionAxis', 'missionAxis')
       .select([
         'p.id', 'p.name', 'p.description', 'p.type', 'p.status',
-        'p.nodoId', 'p.workPlanTaskId', 'p.createdBy', 'p.createdAt', 'p.updatedAt',
+        'p.nodoId', 'p.workPlanTaskId', 'p.strategyId', 'p.missionAxisId', 'p.sessionTemplate',
+        'p.createdBy', 'p.createdAt', 'p.updatedAt',
         'creator.id', 'creator.name', 'creator.email',
+        'strategy.id', 'strategy.name',
+        'missionAxis.id', 'missionAxis.name',
       ])
       .orderBy('p.createdAt', 'DESC');
 
@@ -59,10 +67,15 @@ export class ProcessesService {
   async findOne(id: string, user: User): Promise<Process> {
     const process = await this.repo.createQueryBuilder('p')
       .leftJoinAndSelect('p.creator', 'creator')
+      .leftJoinAndSelect('p.strategy', 'strategy')
+      .leftJoinAndSelect('p.missionAxis', 'missionAxis')
       .select([
         'p.id', 'p.name', 'p.description', 'p.type', 'p.status',
-        'p.nodoId', 'p.workPlanTaskId', 'p.createdBy', 'p.createdAt', 'p.updatedAt',
+        'p.nodoId', 'p.workPlanTaskId', 'p.strategyId', 'p.missionAxisId', 'p.sessionTemplate',
+        'p.createdBy', 'p.createdAt', 'p.updatedAt',
         'creator.id', 'creator.name', 'creator.email',
+        'strategy.id', 'strategy.name',
+        'missionAxis.id', 'missionAxis.name',
       ])
       .where('p.id = :id', { id })
       .getOne();
@@ -81,6 +94,9 @@ export class ProcessesService {
       ...(dto.status          !== undefined && { status: dto.status }),
       ...(dto.nodoId          !== undefined && { nodoId: dto.nodoId }),
       ...(dto.workPlanTaskId  !== undefined && { workPlanTaskId: dto.workPlanTaskId }),
+      ...(dto.strategyId      !== undefined && { strategyId: dto.strategyId }),
+      ...(dto.missionAxisId   !== undefined && { missionAxisId: dto.missionAxisId }),
+      ...(dto.sessionTemplate !== undefined && { sessionTemplate: dto.sessionTemplate }),
     });
     return this.repo.save(process);
   }

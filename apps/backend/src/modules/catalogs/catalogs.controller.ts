@@ -54,3 +54,15 @@ export class StrategiesController {
   @ApiOperation({ summary: 'Listar estrategias' })
   findAll() { return this.svc.findAllStrategies(); }
 }
+
+@ApiTags('Catálogos')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('mission-axes')
+export class MissionAxesController {
+  constructor(private readonly svc: CatalogsService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Listar ejes misionales con subejes anidados' })
+  findAll() { return this.svc.findAllMissionAxes(); }
+}

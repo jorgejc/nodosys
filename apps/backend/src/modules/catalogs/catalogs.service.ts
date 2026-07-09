@@ -1,10 +1,11 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Faculty } from './entities/faculty.entity';
 import { Program } from './entities/program.entity';
 import { Municipality } from './entities/municipality.entity';
 import { Strategy } from './entities/strategy.entity';
+import { MissionAxis } from './entities/mission-axis.entity';
 
 // ── Datos de facultades y programas ──────────────────────────────────
 const SEED_FACULTIES: Array<{
@@ -104,6 +105,22 @@ const NATIONAL_MUNICIPALITIES: Array<{ name: string; department: string }> = [
   { name: 'Argelia',     department: 'Cauca' },
 ];
 
+// ── Ejes misionales ──────────────────────────────────────────────────
+const SEED_MISSION_AXES: Array<{ name: string; children?: string[] }> = [
+  { name: 'Docencia directa' },
+  { name: 'Asesorías de trabajo de grado' },
+  { name: 'Investigación' },
+  { name: 'Extensión' },
+  {
+    name: 'Administración académica',
+    children: [
+      'Gestión de programas',
+      'Representatividad en cuerpos colegiados u otros',
+      'Otras actividades administrativas (Internacionalización, Bienestar, entre otras)',
+    ],
+  },
+];
+
 // ── Estrategias ──────────────────────────────────────────────────────
 const SEED_STRATEGIES = [
   'Educación Precedente',
@@ -129,12 +146,15 @@ export class CatalogsService implements OnModuleInit {
     private readonly municipalityRepo: Repository<Municipality>,
     @InjectRepository(Strategy)
     private readonly strategyRepo: Repository<Strategy>,
+    @InjectRepository(MissionAxis)
+    private readonly missionAxisRepo: Repository<MissionAxis>,
   ) {}
 
   async onModuleInit() {
     await this.seedFacultiesAndPrograms();
     await this.seedMunicipalities();
     await this.seedStrategies();
+    await this.seedMissionAxes();
   }
 
   private async seedFacultiesAndPrograms() {
@@ -171,6 +191,24 @@ export class CatalogsService implements OnModuleInit {
     this.log.log(`Seeded ${SEED_STRATEGIES.length} strategies`);
   }
 
+  private async seedMissionAxes() {
+    if (await this.missionAxisRepo.count() > 0) return;
+    this.log.log('Seeding mission axes…');
+    for (const axisData of SEED_MISSION_AXES) {
+      const parent = await this.missionAxisRepo.save(
+        this.missionAxisRepo.create({ name: axisData.name, parentId: null }),
+      );
+      if (axisData.children?.length) {
+        await this.missionAxisRepo.save(
+          axisData.children.map(name =>
+            this.missionAxisRepo.create({ name, parentId: parent.id }),
+          ),
+        );
+      }
+    }
+    this.log.log(`Seeded ${SEED_MISSION_AXES.length} mission axes`);
+  }
+
   // ── Queries ──────────────────────────────────────────────────────
 
   findAllFaculties(): Promise<Faculty[]> {
@@ -202,5 +240,14 @@ export class CatalogsService implements OnModuleInit {
 
   findAllStrategies(): Promise<Strategy[]> {
     return this.strategyRepo.find({ order: { name: 'ASC' } });
+  }
+
+  // Devuelve árbol de 2 niveles: ejes raíz con sus subejes anidados
+  findAllMissionAxes(): Promise<MissionAxis[]> {
+    return this.missionAxisRepo.find({
+      where: { parentId: IsNull() },
+      relations: ['children'],
+      order: { name: 'ASC' },
+    });
   }
 }
