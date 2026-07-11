@@ -28,13 +28,24 @@ export class ActivitiesController {
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'userId', required: false })
   @ApiQuery({ name: 'processId', required: false })
+  @ApiQuery({ name: 'sessionId', required: false })
   findAll(
     @CurrentUser() user: User,
     @Query('status') status?: string,
     @Query('userId') userId?: string,
     @Query('processId') processId?: string,
+    @Query('sessionId') sessionId?: string,
   ) {
-    return this.svc.findAll(user, { status, userId, processId });
+    return this.svc.findAll(user, { status, userId, processId, sessionId });
+  }
+
+  @Get('last-for-process/:processId')
+  @ApiOperation({ summary: 'Última actividad del proceso (para precarga de recursos)' })
+  getLastForProcess(
+    @Param('processId', ParseUUIDPipe) processId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.svc.getLastForProcess(processId, user);
   }
 
   @Post()

@@ -356,33 +356,29 @@ function ActivitiesTab({ processId }: { processId: string }) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center bg-[#111] border border-[#2A2A2A] rounded-xl">
         <Zap size={36} className="text-[#333] mb-3" />
-        <p className="text-[#555] text-sm">Este proceso no requiere recursos por ahora</p>
+        <p className="text-[#555] text-sm">Este proceso no tiene solicitudes de recursos</p>
         <p className="text-xs text-[#444] mt-1 max-w-xs">
-          Cuando necesites solicitar viáticos o recursos, crea una actividad y vincúlala a este proceso.
+          Para solicitar viáticos o recursos, abre una sesión y usa el botón "Solicitar recursos".
         </p>
-        <button
-          onClick={() => navigate('/actividades/nueva')}
-          className="mt-4 text-[#FF6B2B] text-sm hover:underline"
-        >
-          Solicitar recursos →
-        </button>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-white font-semibold text-sm">Actividades / Recursos</h2>
-          <p className="text-xs text-[#555] mt-0.5">
-            {activities.length} actividad{activities.length !== 1 ? 'es' : ''} vinculada{activities.length !== 1 ? 's' : ''}
-          </p>
-        </div>
+      <div>
+        <h2 className="text-white font-semibold text-sm">Actividades / Recursos</h2>
+        <p className="text-xs text-[#555] mt-0.5">
+          {activities.length} actividad{activities.length !== 1 ? 'es' : ''} vinculada{activities.length !== 1 ? 's' : ''}
+        </p>
       </div>
 
       <div className="space-y-2">
-        {activities.map((act: { id: string; title: string; status: string; activityDate: string; activityCode?: string }) => (
+        {activities.map((act: {
+          id: string; title: string; status: string;
+          activityDate: string; activityCode?: string;
+          sessionId?: string | null;
+        }) => (
           <div
             key={act.id}
             onClick={() => navigate(`/actividades/${act.id}`)}
@@ -399,9 +395,16 @@ function ActivitiesTab({ processId }: { processId: string }) {
                 {act.activityCode ?? 'Borrador'} · {new Date(act.activityDate).toLocaleDateString('es-CO')}
               </p>
             </div>
-            <span className="text-xs px-2 py-0.5 rounded-full border bg-[#1A1A1A] text-[#666] border-[#2A2A2A] flex-shrink-0 capitalize">
-              {act.status.replace('_', ' ')}
-            </span>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {act.sessionId && (
+                <span className="text-xs px-2 py-0.5 rounded-full border bg-[#1A1A1A] text-[#888] border-[#333]">
+                  sesión
+                </span>
+              )}
+              <span className="text-xs px-2 py-0.5 rounded-full border bg-[#1A1A1A] text-[#666] border-[#2A2A2A] capitalize">
+                {act.status.replace('_', ' ')}
+              </span>
+            </div>
           </div>
         ))}
       </div>

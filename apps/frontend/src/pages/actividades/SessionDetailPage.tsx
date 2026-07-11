@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Loader2, Edit2, Trash2, Plus,
   Download, Users, CheckCircle, XCircle,
-  Calendar, Clock, MapPin, FileText, Link2,
+  Calendar, Clock, MapPin, FileText, Link2, Zap,
 } from 'lucide-react';
 import { sessionsService, type SessionAttendee, type SessionEvidence } from '@/services/sessions.service';
 import { processesService } from '@/services/processes.service';
@@ -483,7 +483,24 @@ export default function SessionDetailPage() {
               <h1 className="text-xl font-bold text-white">{contextTitle}</h1>
             </div>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
+            {s.processId && (
+              <button
+                onClick={() => navigate('/actividades/nueva', {
+                  state: {
+                    sessionId:     sid,
+                    sessionNumber: s.sessionNumber,
+                    sessionTopic:  s.topic,
+                    processId:     s.processId,
+                    strategyId:    processQ.data?.strategyId ?? null,
+                    strategyName:  processQ.data?.strategy?.name ?? null,
+                  },
+                })}
+                className="flex items-center gap-1.5 text-xs bg-[#1A1A1A] border border-[#2A2A2A] text-[#888] hover:text-white px-3 py-2 rounded-lg transition-colors"
+              >
+                <Zap size={13} /> Solicitar recursos
+              </button>
+            )}
             <button
               onClick={() => handleExportPDF(s!)}
               disabled={generatingPDF}

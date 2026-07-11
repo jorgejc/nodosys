@@ -1,9 +1,9 @@
 import {
-  IsString, IsOptional, IsBoolean, IsNumber,
-  IsEnum, IsDateString, IsPositive, MaxLength, Min,
+  IsString, IsOptional, IsBoolean, IsNumber, IsInt,
+  IsEnum, IsDateString, IsPositive, MaxLength, Min, IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { RequestStatus } from '../entities/activity-request.entity';
+import { RequestStatus, PaymentType } from '../entities/activity-request.entity';
 import { ExpenseCategory } from '../entities/activity-expense.entity';
 import { EvidenceType } from '../entities/activity-evidence.entity';
 
@@ -31,11 +31,35 @@ export class CreateActivityRequestDto {
 
   @ApiPropertyOptional({ example: 30 })
   @IsNumber() @IsOptional()
-  expectedParticipants?: number;
+  estimatedParticipants?: number;
 
   @ApiPropertyOptional()
   @IsString() @IsOptional()
   axisActivityId?: string;
+
+  @ApiPropertyOptional({ description: 'Sesión a la que se vincula la actividad' })
+  @IsUUID() @IsOptional()
+  sessionId?: string;
+
+  @ApiPropertyOptional({ description: 'Estrategia (heredada del proceso o elegida si suelta)' })
+  @IsUUID() @IsOptional()
+  strategyId?: string;
+
+  @ApiPropertyOptional({ description: 'Municipio donde se realiza' })
+  @IsUUID() @IsOptional()
+  municipalityId?: string;
+
+  @ApiPropertyOptional({ description: 'Detalle de la necesidad: cantidades, recursos y costos' })
+  @IsString() @IsOptional()
+  resourceDetail?: string;
+
+  @ApiPropertyOptional({ enum: PaymentType, description: 'Pago anticipado (avance) o reembolso' })
+  @IsEnum(PaymentType) @IsOptional()
+  paymentType?: PaymentType;
+
+  @ApiPropertyOptional({ description: '¿Cuenta con proveedor con factura electrónica?' })
+  @IsBoolean() @IsOptional()
+  hasElectronicInvoiceProvider?: boolean;
 
   // Viáticos
   @ApiPropertyOptional({ default: false })

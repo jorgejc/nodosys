@@ -7,6 +7,9 @@ import { User } from '../../users/entities/user.entity';
 import { ActivityExpense } from './activity-expense.entity';
 import { ActivityParticipant } from './activity-participant.entity';
 import { ActivityEvidence } from './activity-evidence.entity';
+import { CourseSession } from '../../sessions/entities/course-session.entity';
+import { Strategy } from '../../catalogs/entities/strategy.entity';
+import { Municipality } from '../../catalogs/entities/municipality.entity';
 
 export enum RequestStatus {
   BORRADOR     = 'borrador',
@@ -16,6 +19,11 @@ export enum RequestStatus {
   EN_EJECUCION = 'en_ejecucion',
   EJECUTADA    = 'ejecutada',
   CERRADA      = 'cerrada',
+}
+
+export enum PaymentType {
+  ANTICIPADO = 'anticipado',
+  REEMBOLSO  = 'reembolso',
 }
 
 @Entity('activity_requests')
@@ -35,6 +43,15 @@ export class ActivityRequest {
   @Column({ name: 'process_id', type: 'uuid', nullable: true })
   processId: string | null;
 
+  @Column({ name: 'session_id', type: 'uuid', nullable: true })
+  sessionId: string | null;
+
+  @Column({ name: 'strategy_id', type: 'uuid', nullable: true })
+  strategyId: string | null;
+
+  @Column({ name: 'municipality_id', type: 'uuid', nullable: true })
+  municipalityId: string | null;
+
   @Column({ type: 'varchar', length: 300 })
   title: string;
 
@@ -51,7 +68,22 @@ export class ActivityRequest {
   location: string | null;
 
   @Column({ name: 'expected_participants', default: 0 })
-  expectedParticipants: number;
+  estimatedParticipants: number;
+
+  @Column({ name: 'resource_detail', type: 'text', nullable: true })
+  resourceDetail: string | null;
+
+  @Column({
+    name: 'payment_type',
+    type: 'enum',
+    enum: PaymentType,
+    enumName: 'payment_type_enum',
+    nullable: true,
+  })
+  paymentType: PaymentType | null;
+
+  @Column({ name: 'has_electronic_invoice_provider', default: false })
+  hasElectronicInvoiceProvider: boolean;
 
   // Viáticos
   @Column({ name: 'requires_food', default: false })
@@ -113,6 +145,18 @@ export class ActivityRequest {
   @ManyToOne(() => User, { eager: false })
   @JoinColumn({ name: 'user_id' })
   user: User;
+
+  @ManyToOne(() => CourseSession, { eager: false, nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'session_id' })
+  session: CourseSession | null;
+
+  @ManyToOne(() => Strategy, { eager: false, nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'strategy_id' })
+  strategy: Strategy | null;
+
+  @ManyToOne(() => Municipality, { eager: false, nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'municipality_id' })
+  municipality: Municipality | null;
 
   @OneToMany(() => ActivityExpense, (e) => e.request, { cascade: true })
   expenses: ActivityExpense[];

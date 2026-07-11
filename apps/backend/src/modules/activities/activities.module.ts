@@ -4,6 +4,9 @@ import { ActivityRequest } from './entities/activity-request.entity';
 import { ActivityExpense } from './entities/activity-expense.entity';
 import { ActivityParticipant } from './entities/activity-participant.entity';
 import { ActivityEvidence } from './entities/activity-evidence.entity';
+import { CourseSession } from '../sessions/entities/course-session.entity';
+import { Strategy } from '../catalogs/entities/strategy.entity';
+import { Municipality } from '../catalogs/entities/municipality.entity';
 import { ActivitiesService } from './activities.service';
 import { ActivitiesController } from './activities.controller';
 
@@ -12,6 +15,7 @@ import { ActivitiesController } from './activities.controller';
     TypeOrmModule.forFeature([
       ActivityRequest, ActivityExpense,
       ActivityParticipant, ActivityEvidence,
+      CourseSession, Strategy, Municipality,
     ]),
   ],
   providers: [ActivitiesService],
