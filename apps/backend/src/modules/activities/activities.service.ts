@@ -60,7 +60,7 @@ export class ActivitiesService {
 
   async findAll(
     user: User,
-    filters?: { status?: string; userId?: string; processId?: string; sessionId?: string },
+    filters?: { status?: string; userId?: string; processId?: string; sessionId?: string; nodoId?: string },
   ): Promise<ActivityRequest[]> {
     const qb = this.requestRepo
       .createQueryBuilder('r')
@@ -76,6 +76,9 @@ export class ActivitiesService {
     if (filters?.status) qb.andWhere('r.status = :status', { status: filters.status });
     if (filters?.userId && this.isReviewer(user)) {
       qb.andWhere('r.user_id = :userId', { userId: filters.userId });
+    }
+    if (filters?.nodoId && this.isReviewer(user)) {
+      qb.andWhere('u.nodo_id = :nodoId', { nodoId: filters.nodoId });
     }
     if (filters?.processId) {
       qb.andWhere('r.process_id = :processId', { processId: filters.processId });

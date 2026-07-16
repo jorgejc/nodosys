@@ -51,10 +51,11 @@ export function useAuth() {
   const canDeleteInventory = hasRole('admin','enlace');
 
   // ── Planes de trabajo ──────────────────────────────────
-  // vicerrector_extension NO tiene planes; ve solo actividades e inventarios
   const canViewOwnPlan      = hasRole('admin','vicerrector_academico','equipo_extension','decano','coordinador','enlace','docente');
   const canViewAllPlans     = hasRole('admin','vicerrector_academico','equipo_extension');
   const canViewFacultyPlans = hasRole('decano','coordinador');
+  // vicerrector_extension ve solo planes de usuarios con rol enlace (agrupados por nodo)
+  const canViewEnlacePlans  = hasRole('vicerrector_extension');
   const canEditPlan         = hasRole('admin','enlace','docente');
   const canAddDeanObs       = hasRole('admin','decano','vicerrector_academico');
 
@@ -73,18 +74,19 @@ export function useAuth() {
   const canAssignRoles = hasRole('admin');
 
   // ── Reportes ───────────────────────────────────────────
-  // Reportes de inventario: quien puede ver inventario
-  const canViewInventoryReports = hasRole('admin','vicerrector_extension','enlace','monitor','auxiliar');
-  // Reportes de planes: quien puede ver planes
-  const canViewPlanReports = hasRole('admin','vicerrector_academico','equipo_extension','decano','coordinador','enlace','docente');
-  const canViewReports = canViewInventoryReports || canViewPlanReports;
+  const canViewInventoryReports  = hasRole('admin','vicerrector_extension','enlace','monitor','auxiliar');
+  const canViewPlanReports       = hasRole('admin','vicerrector_extension','vicerrector_academico','equipo_extension','decano','coordinador','enlace','docente');
+  // Actividades: admin, vice-extensión, enlace, docente (estos dos últimos solo los suyos — el backend filtra)
+  const canViewActivityReports   = hasRole('admin','vicerrector_extension','enlace','docente');
+  const canViewUserReports       = hasRole('admin');
+  const canViewReports = canViewInventoryReports || canViewPlanReports || canViewActivityReports;
  
   return {
     user, role,
     // Inventario
     canViewInventory, canAddInventory, canEditInventory, canDeleteInventory,
     // Planes
-    canViewOwnPlan, canViewAllPlans, canViewFacultyPlans, canEditPlan, canAddDeanObs,
+    canViewOwnPlan, canViewAllPlans, canViewFacultyPlans, canViewEnlacePlans, canEditPlan, canAddDeanObs,
     // Actividades
     canViewActividades, canViewAllActivities, canReviewActivities,
     // Procesos
@@ -93,6 +95,7 @@ export function useAuth() {
     canManageUsers, canCreateUsers, canAssignRoles,
     // Reportes
     canViewReports, canViewInventoryReports, canViewPlanReports,
+    canViewActivityReports, canViewUserReports,
     // Helpers
     isAdmin, isViceExt, isViceAcad, isEquipoExt,
     isDecano, isCoord, isEnlace, isDocente, isMonAux,

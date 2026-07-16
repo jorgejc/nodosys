@@ -69,6 +69,12 @@ export class WorkPlanController {
     return this.svc.getAxisSummaries(id);
   }
 
+  @Get(':id/linked-processes')
+  @ApiOperation({ summary: 'Mapa taskId → procesos vinculados (para mostrar bitácora desde el plan)' })
+  getLinkedProcesses(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+    return this.svc.findLinkedProcessesByPlan(id, user);
+  }
+
   // ── Ejes ─────────────────────────────────────────────────
   @Patch(':planId/axes/:axisId')
   @ApiOperation({ summary: 'Actualizar horas de un eje misional' })

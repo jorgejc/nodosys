@@ -289,6 +289,23 @@ export default function InventoryItemDetailPage() {
           </button>
         </div>
 
+        {/* Ubicación del ítem */}
+        {item.locationType && (
+          <div className="mt-4 flex items-center gap-2 text-sm">
+            <span className="text-[#555] text-xs uppercase tracking-wider">Ubicación:</span>
+            {item.locationType === 'gabinete' ? (
+              <span className="font-mono text-[#FF6B2B] text-xs bg-[#FF6B2B]/10 border border-[#FF6B2B]/20 px-2 py-0.5 rounded">
+                {[
+                  item.cabinetNumber ? `Gabinete ${item.cabinetNumber}` : null,
+                  item.shelfNumber   ? `Entrepaño ${item.shelfNumber}`  : null,
+                ].filter(Boolean).join(' · ') || 'Gabinete'}
+              </span>
+            ) : (
+              <span className="text-[#888] text-xs">{item.locationNote || 'Mobiliario suelto'}</span>
+            )}
+          </div>
+        )}
+
         {/* Mini stats */}
         <div className="grid grid-cols-3 gap-3 mt-5 pt-5 border-t border-[#1E1E1E]">
           {[

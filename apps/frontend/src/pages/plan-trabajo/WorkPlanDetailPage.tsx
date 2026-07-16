@@ -17,12 +17,18 @@ import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft, Plus, ChevronDown, ChevronRight,
   Loader2, CheckCircle2, Clock, AlertCircle,
-  ExternalLink,
+  ExternalLink, Download, FileText,
 } from 'lucide-react';
 import { workPlanService } from '@/services/workplan.service';
+import { processesService } from '@/services/processes.service';
 import ActivityModal from '@/components/workplan/ActivityModal';
+import ExportMenu from '@/components/ui/ExportMenu';
 import type { WorkPlan, WorkPlanAxis, AxisActivity, AxisType } from '@/types';
 import { AXIS_LABELS, AXIS_ICONS } from '@/types';
+import { exportConsolidatedPDF } from '@/utils/pdfProcess';
+
+type LinkedProcess = { id: string; name: string; type: string; status: string };
+type LinkedMap = Record<string, LinkedProcess[]>;
 
 // ── Barra de progreso ─────────────────────────────────────
 function ProgressBar({ value, max, color = '#FF6B2B' }: { value: number; max: number; color?: string }) {
@@ -55,11 +61,35 @@ function StatusPill({ status }: { status: string }) {
 
 // ── Fila de actividad ─────────────────────────────────────
 function ActivityRow({
-  activity, seqNum, onClick,
-}: { activity: AxisActivity; seqNum: number; onClick: () => void }) {
+  activity, seqNum, onClick, linkedProcesses,
+}: {
+  activity: AxisActivity;
+  seqNum: number;
+  onClick: () => void;
+  linkedProcesses: LinkedProcess[];
+}) {
+  const navigate = useNavigate();
+  const [generatingIdx, setGeneratingIdx] = useState<number | null>(null);
+  const [showList, setShowList] = useState(false);
+
   const totalH = (activity.weeks && activity.hoursPerWeek)
     ? (activity.weeks * activity.hoursPerWeek)
     : (activity.plannedHours || 0);
+
+  async function handlePDF(proc: LinkedProcess, idx: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    setGeneratingIdx(idx);
+    try {
+      const report = await processesService.getReport(proc.id);
+      await exportConsolidatedPDF(report);
+    } catch (err) {
+      console.error('Error generando bitácora:', err);
+    } finally {
+      setGeneratingIdx(null);
+    }
+  }
+
+  const hasLinked = linkedProcesses.length > 0;
 
   return (
     <tr
@@ -77,12 +107,71 @@ function ActivityRow({
         {activity.studentName && (
           <div className="text-xs text-[#666] mt-0.5">👤 {activity.studentName}</div>
         )}
-        {/* Dimensiones */}
         <div className="flex gap-1 mt-1">
           {activity.dimInclusion  && <span className="text-[10px] text-[#FF6B2B] bg-[#FF6B2B]/10 px-1.5 rounded">Inclusión</span>}
           {activity.dimTerritorial && <span className="text-[10px] text-blue-400 bg-blue-400/10 px-1.5 rounded">Territorial</span>}
           {activity.dimHuman       && <span className="text-[10px] text-purple-400 bg-purple-400/10 px-1.5 rounded">Sentido H.</span>}
         </div>
+        {/* Procesos vinculados */}
+        {hasLinked && (
+          <div className="mt-1.5" onClick={e => e.stopPropagation()}>
+            {linkedProcesses.length === 1 ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-1.5 py-0.5 rounded font-mono">
+                  {linkedProcesses[0].name.length > 28 ? linkedProcesses[0].name.slice(0, 28) + '…' : linkedProcesses[0].name}
+                </span>
+                <button
+                  onClick={(e) => handlePDF(linkedProcesses[0], 0, e)}
+                  disabled={generatingIdx === 0}
+                  title="Descargar bitácora consolidada"
+                  className="text-[#FF6B2B] hover:text-white transition-colors disabled:opacity-50"
+                >
+                  {generatingIdx === 0 ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); navigate(`/procesos/${linkedProcesses[0].id}`); }}
+                  title="Ver proceso"
+                  className="text-[#555] hover:text-white transition-colors"
+                >
+                  <FileText size={11} />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowList(!showList); }}
+                  className="text-[10px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-1.5 py-0.5 rounded hover:bg-emerald-400/20 transition-colors"
+                >
+                  {linkedProcesses.length} procesos vinculados ▾
+                </button>
+                {showList && (
+                  <div className="absolute left-0 top-full mt-1 z-20 bg-[#111] border border-[#2A2A2A] rounded-lg shadow-xl py-1 w-72">
+                    {linkedProcesses.map((proc, idx) => (
+                      <div key={proc.id} className="flex items-center gap-2 px-3 py-2 hover:bg-[#1A1A1A]">
+                        <span className="text-xs text-white flex-1 truncate" title={proc.name}>{proc.name}</span>
+                        <button
+                          onClick={(e) => handlePDF(proc, idx, e)}
+                          disabled={generatingIdx === idx}
+                          title="Bitácora PDF"
+                          className="text-[#FF6B2B] hover:text-white transition-colors flex-shrink-0 disabled:opacity-50"
+                        >
+                          {generatingIdx === idx ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigate(`/procesos/${proc.id}`); }}
+                          title="Ver proceso"
+                          className="text-[#555] hover:text-white transition-colors flex-shrink-0"
+                        >
+                          <FileText size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </td>
       <td className="px-4 py-3 text-xs text-white font-mono text-right">{totalH || '—'}</td>
       <td className="px-4 py-3 text-xs text-green-400 font-mono text-right">
@@ -110,13 +199,14 @@ function ActivityRow({
 
 // ── Acordeón de eje misional ──────────────────────────────
 function AxisAccordion({
-  axis, planId, planTotalHours, onAddActivity, onEditActivity,
+  axis, planId, planTotalHours, onAddActivity, onEditActivity, linkedMap,
 }: {
   axis: WorkPlanAxis;
   planId: string;
   planTotalHours: number;
   onAddActivity: (axisId: string, axisType: AxisType) => void;
   onEditActivity: (activity: AxisActivity, axis: WorkPlanAxis) => void;
+  linkedMap: LinkedMap;
 }) {
   const [open, setOpen] = useState(false);
   const activities = axis.activities ?? [];
@@ -185,6 +275,7 @@ function AxisAccordion({
                       activity={act}
                       seqNum={i + 1}
                       onClick={() => onEditActivity(act, axis)}
+                      linkedProcesses={linkedMap[act.id] ?? []}
                     />
                   ))}
                 </tbody>
@@ -229,7 +320,14 @@ export default function WorkPlanDetailPage() {
     enabled: !!id,
   });
 
+  const linkedQ = useQuery({
+    queryKey: ['workplan-linked', id],
+    queryFn: () => workPlanService.getLinkedProcesses(id!),
+    enabled: !!id,
+  });
+
   const plan = planQuery.data as (WorkPlan & { summary: Record<string, string> }) | undefined;
+  const linkedMap: LinkedMap = linkedQ.data ?? {};
 
   if (planQuery.isLoading) {
     return (
@@ -277,9 +375,16 @@ export default function WorkPlanDetailPage() {
               <p className="text-xs text-[#444] font-mono mt-1">Res. {plan.resolutionNumber}</p>
             )}
           </div>
-          <div className="text-right flex-shrink-0">
-            <div className="text-3xl font-black text-[#FF6B2B]">{completionPct}%</div>
-            <div className="text-xs text-[#555] mt-0.5">completado</div>
+          <div className="flex flex-col items-end gap-2 flex-shrink-0">
+            <ExportMenu
+              pdfUrl={`/reports/workplan/${id}/pdf`}
+              excelUrl={`/reports/workplan/${id}/excel`}
+              label="Exportar plan"
+            />
+            <div className="text-right">
+              <div className="text-3xl font-black text-[#FF6B2B]">{completionPct}%</div>
+              <div className="text-xs text-[#555] mt-0.5">completado</div>
+            </div>
           </div>
         </div>
 
@@ -329,6 +434,7 @@ export default function WorkPlanDetailPage() {
               planTotalHours={totalHours}
               onAddActivity={openAdd}
               onEditActivity={openEdit}
+              linkedMap={linkedMap}
             />
           ))}
         </div>

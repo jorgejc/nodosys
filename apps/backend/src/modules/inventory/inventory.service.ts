@@ -13,7 +13,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { InventoryCategory } from './entities/inventory-category.entity';
-import { InventoryItem } from './entities/inventory-item.entity';
+import { InventoryItem, LocationType } from './entities/inventory-item.entity';
 import { InventoryUnit, UnitCondition, UnitStatus } from './entities/inventory-unit.entity';
 import { InventoryMovement, MovementType } from './entities/inventory-movement.entity';
 import {
@@ -166,9 +166,24 @@ export class InventoryService {
       trackByUnit: dto.trackByUnit ?? true,
       nodoId: dto.nodoId ?? null,
       registeredBy: userId,
+      locationType:  (dto.locationType as LocationType) ?? null,
+      cabinetNumber: dto.cabinetNumber ?? null,
+      shelfNumber:   dto.shelfNumber ?? null,
+      locationNote:  dto.locationNote ?? null,
     });
 
     return this.itemRepo.save(item);
+  }
+
+  async getCabinetNumbers(nodoId?: string): Promise<string[]> {
+    const qb = this.itemRepo
+      .createQueryBuilder('item')
+      .select('DISTINCT item.cabinet_number', 'cabinet_number')
+      .where('item.deleted_at IS NULL')
+      .andWhere('item.cabinet_number IS NOT NULL');
+    if (nodoId) qb.andWhere('item.nodo_id = :nodoId', { nodoId });
+    const rows = await qb.getRawMany<{ cabinet_number: string }>();
+    return rows.map(r => r.cabinet_number).sort();
   }
 
   async updateItem(id: string, dto: UpdateInventoryItemDto, user?: User): Promise<InventoryItem> {

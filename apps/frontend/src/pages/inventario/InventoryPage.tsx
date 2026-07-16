@@ -22,8 +22,21 @@ import { usersService } from '@/services/users.service';
 import EditInventoryItemModal from '@/components/inventory/EditInventoryItemModal';
 import { useAuthStore } from '@/stores/auth.store';
 import { useAuth } from '@/hooks/useAuth';
-import type { InventoryCategory } from '@/types';
+import type { InventoryCategory, InventoryItem } from '@/types';
+
+function fmtItemLocation(item: InventoryItem): string | null {
+  if (!item.locationType) return null;
+  if (item.locationType === 'gabinete') {
+    const parts = [
+      item.cabinetNumber ? `G${item.cabinetNumber}` : null,
+      item.shelfNumber   ? `E${item.shelfNumber}`   : null,
+    ].filter(Boolean);
+    return parts.length ? parts.join('/') : null;
+  }
+  return item.locationNote || null;
+}
 import { usePagination } from '@/components/ui/Pagination';
+import ExportMenu from '@/components/ui/ExportMenu';
 
 const GLOBAL_ROLES = [
   'admin', 'vicerrector_extension', 'vicerrector_academico',
@@ -137,15 +150,25 @@ export default function InventoryPage() {
             {headerSub}
           </p>
         </div>
-        {canAddInventory && (isGlobalRole || hasNodo) && (
-          <button
-            onClick={() => navigate('/inventario/nuevo')}
-            className="flex items-center gap-2 bg-[#FF6B2B] hover:bg-[#e55c20] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
-          >
-            <Plus size={16} />
-            Agregar ítem
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {(isGlobalRole || hasNodo) && (
+            <ExportMenu
+              pdfUrl="/reports/inventory/pdf"
+              excelUrl="/reports/inventory/excel"
+              params={effectiveNodoId ? { nodoId: effectiveNodoId } : undefined}
+              label="Exportar"
+            />
+          )}
+          {canAddInventory && (isGlobalRole || hasNodo) && (
+            <button
+              onClick={() => navigate('/inventario/nuevo')}
+              className="flex items-center gap-2 bg-[#FF6B2B] hover:bg-[#e55c20] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+            >
+              <Plus size={16} />
+              Agregar ítem
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Selector de nodos (solo roles globales) */}
@@ -339,6 +362,9 @@ export default function InventoryPage() {
                             {[item.brand, item.model].filter(Boolean).join(' · ')}
                           </div>
                         )}
+                        {(() => { const loc = fmtItemLocation(item as InventoryItem); return loc ? (
+                          <div className="text-xs text-[#FF6B2B]/70 mt-0.5 font-mono">{loc}</div>
+                        ) : null; })()}
                       </td>
                       <td className="px-5 py-3.5">
                         <span className="inline-flex items-center gap-1.5 text-xs text-[#888] bg-[#1A1A1A] px-2.5 py-1 rounded-full border border-[#2A2A2A]">

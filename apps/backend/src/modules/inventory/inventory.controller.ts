@@ -71,6 +71,16 @@ export class InventoryController {
     return this.inventoryService.createCategory(body);
   }
 
+  // ── Números de gabinete (autocomplete) ───────────────────
+  @Get('cabinet-numbers')
+  @ApiOperation({ summary: 'Lista de cabinet_number distintos en el nodo (para datalist)' })
+  @ApiQuery({ name: 'nodoId', required: false })
+  getCabinetNumbers(@CurrentUser() user: User, @Query('nodoId') nodoId?: string) {
+    this.requireAccess(user);
+    const nodo = this.effectiveNodo(user, nodoId);
+    return this.inventoryService.getCabinetNumbers(nodo);
+  }
+
   // ── Resumen y préstamos ───────────────────────────────────
   @Get('summary')
   @ApiOperation({ summary: 'Estadísticas generales del inventario' })

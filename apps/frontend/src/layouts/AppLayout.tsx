@@ -24,7 +24,7 @@ export default function AppLayout() {
   const navigate     = useNavigate();
   const queryClient  = useQueryClient();
   const { user, logout } = useAuthStore();
-  const { canViewInventory, canViewOwnPlan, canViewAllPlans,
+  const { canViewInventory, canViewOwnPlan, canViewAllPlans, canViewEnlacePlans,
           canViewReports, canManageUsers, canViewProcesos,
           canViewActividades } = useAuth();
   const [open, setOpen] = useState(true);
@@ -41,7 +41,7 @@ export default function AppLayout() {
   const navItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', sub: 'Vista general', show: true },
     { to: '/inventario', icon: Package, label: 'Inventario', sub: 'Equipos y materiales', show: canViewInventory },
-    { to: '/plan-trabajo', icon: ClipboardList, label: 'Plan de Trabajo', sub: 'Actividades y horas', show: canViewOwnPlan || canViewAllPlans },
+    { to: '/plan-trabajo', icon: ClipboardList, label: 'Plan de Trabajo', sub: 'Actividades y horas', show: canViewOwnPlan || canViewAllPlans || canViewEnlacePlans },
     { to: '/reportes', icon: FileText, label: 'Reportes', sub: 'PDF y Excel', show: canViewReports },
     { to: '/usuarios', icon: Users, label: 'Usuarios', sub: 'Gestión de accesos', show: canManageUsers },
     { to: '/actividades', icon: Zap, label: 'Actividades', sub: 'Viáticos y solicitudes', show: canViewActividades },

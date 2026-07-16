@@ -3,10 +3,11 @@ import {
   BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { WorkPlan, PlanStatus } from './entities/work-plan.entity';
 import { WorkPlanAxis, AxisType, AXIS_DISPLAY_ORDER } from './entities/work-plan-axis.entity';
 import { AxisActivity, ActivityStatus } from './entities/axis-activity.entity';
+import { Process } from '../processes/entities/process.entity';
 import {
   CreateWorkPlanDto, UpdateWorkPlanDto,
   CreateAxisDto, UpdateAxisDto,
@@ -26,6 +27,9 @@ export class WorkPlanService {
     @InjectRepository(AxisActivity)
     private readonly activityRepo: Repository<AxisActivity>,
 
+    @InjectRepository(Process)
+    private readonly processRepo: Repository<Process>,
+
     private readonly dataSource: DataSource,
   ) {}
 
@@ -39,6 +43,9 @@ export class WorkPlanService {
       case UserRole.VICERRECTOR_ACADEMICO:
       case UserRole.EQUIPO_EXTENSION:
         return true;
+      case UserRole.VICERRECTOR_EXTENSION:
+        // Solo puede ver planes de usuarios enlace
+        return plan.user?.role === UserRole.ENLACE;
       case UserRole.DECANO: {
         // Acepta coincidencia por texto de facultad (wp.faculty) o por facultyId del docente
         const byText = !!user.faculty && plan.faculty === user.faculty;
@@ -100,11 +107,14 @@ async findAll(user: User): Promise<WorkPlan[]> {
     } else {
       qb.where('1=0'); // Decano sin facultad asignada: no ve ningún plan
     }
+  } else if (role === UserRole.VICERRECTOR_EXTENSION) {
+    // Solo ve planes de usuarios con rol enlace
+    qb.where("u.role = 'enlace'");
   } else if (role === UserRole.COORDINADOR && program) {
     // Solo docentes de su programa
     qb.where('u.program = :program', { program });
   } else {
-    // Docente, enlace, vicerrector_extension y cualquier otro: solo su propio plan
+    // Docente, enlace y cualquier otro: solo su propio plan
     qb.where('wp.user_id = :userId', { userId });
   }
  
@@ -347,5 +357,45 @@ async findAll(user: User): Promise<WorkPlan[]> {
       'SELECT * FROM v_axis_summary WHERE work_plan_id = $1 ORDER BY axis_type',
       [planId],
     );
+  }
+
+  // Devuelve mapa taskId → procesos vinculados para todas las tareas del plan
+  async findLinkedProcessesByPlan(
+    planId: string,
+    user: User,
+  ): Promise<Record<string, { id: string; name: string; type: string; status: string }[]>> {
+    // Verifica acceso al plan
+    await this.findOne(planId, user);
+
+    // Obtiene todos los IDs de tareas del plan
+    const axes = await this.axisRepo.find({
+      where: { workPlanId: planId },
+      relations: ['activities'],
+    });
+    const taskIds = axes.flatMap((ax) => (ax.activities ?? []).map((a) => a.id));
+    if (taskIds.length === 0) return {};
+
+    // Query único a processes
+    const processQb = this.processRepo
+      .createQueryBuilder('p')
+      .select(['p.id', 'p.name', 'p.type', 'p.status', 'p.workPlanTaskId', 'p.createdBy'])
+      .where({ workPlanTaskId: In(taskIds) });
+
+    // Docentes solo ven los propios; admin/vicerrector ven todos
+    const globalRoles: UserRole[] = [UserRole.ADMIN, UserRole.VICERRECTOR_EXTENSION, UserRole.VICERRECTOR_ACADEMICO];
+    if (!globalRoles.includes(user.role)) {
+      processQb.andWhere('p.created_by = :uid', { uid: user.id });
+    }
+
+    const processes = await processQb.getMany();
+
+    // Agrupar por taskId
+    const map: Record<string, { id: string; name: string; type: string; status: string }[]> = {};
+    for (const p of processes) {
+      if (!p.workPlanTaskId) continue;
+      if (!map[p.workPlanTaskId]) map[p.workPlanTaskId] = [];
+      map[p.workPlanTaskId].push({ id: p.id, name: p.name, type: p.type, status: p.status });
+    }
+    return map;
   }
 }

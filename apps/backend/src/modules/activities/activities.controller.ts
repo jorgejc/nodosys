@@ -29,14 +29,16 @@ export class ActivitiesController {
   @ApiQuery({ name: 'userId', required: false })
   @ApiQuery({ name: 'processId', required: false })
   @ApiQuery({ name: 'sessionId', required: false })
+  @ApiQuery({ name: 'nodoId', required: false })
   findAll(
     @CurrentUser() user: User,
     @Query('status') status?: string,
     @Query('userId') userId?: string,
     @Query('processId') processId?: string,
     @Query('sessionId') sessionId?: string,
+    @Query('nodoId') nodoId?: string,
   ) {
-    return this.svc.findAll(user, { status, userId, processId, sessionId });
+    return this.svc.findAll(user, { status, userId, processId, sessionId, nodoId });
   }
 
   @Get('last-for-process/:processId')

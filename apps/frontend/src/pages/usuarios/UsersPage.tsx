@@ -11,6 +11,7 @@ import {
   Users, Plus, Search, X, Save, Loader2, Shield,
   Eye, EyeOff, CheckCircle2, XCircle, Pencil, Info, Filter, MapPin,
 } from 'lucide-react';
+import ExportMenu from '@/components/ui/ExportMenu';
 import { usersService } from '@/services/users.service';
 import { catalogsService } from '@/services/catalogs.service';
 import { useAuth } from '@/hooks/useAuth';
@@ -523,12 +524,22 @@ export default function UsersPage() {
           <h1 className="text-2xl font-bold text-white">Usuarios del Sistema</h1>
           <p className="text-[#666] text-sm mt-1">{users.length} usuario{users.length !== 1 ? 's' : ''}</p>
         </div>
-        {canCreateUsers && (
-          <button onClick={() => setModal(null)}
-            className="flex items-center gap-2 bg-[#FF6B2B] hover:bg-[#e55c20] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
-            <Plus size={16}/> Nuevo usuario
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <ExportMenu
+              pdfUrl="/reports/users/pdf"
+              excelUrl="/reports/users/excel"
+              params={{ role: roleF || undefined }}
+              label="Exportar"
+            />
+          )}
+          {canCreateUsers && (
+            <button onClick={() => setModal(null)}
+              className="flex items-center gap-2 bg-[#FF6B2B] hover:bg-[#e55c20] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
+              <Plus size={16}/> Nuevo usuario
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filtros */}

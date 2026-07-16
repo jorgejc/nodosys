@@ -36,4 +36,9 @@ export const workPlanService = {
 
   getMyTasks: () =>
     api.get<{ id: string; label: string }[]>('/workplan/my-tasks').then((r) => r.data),
+
+  getLinkedProcesses: (planId: string) =>
+    api.get<Record<string, { id: string; name: string; type: string; status: string }[]>>(
+      `/workplan/${planId}/linked-processes`,
+    ).then((r) => r.data),
 };

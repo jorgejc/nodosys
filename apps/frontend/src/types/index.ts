@@ -84,6 +84,8 @@ export interface InventoryCategory {
   createdAt: string;
 }
 
+export type LocationType = 'gabinete' | 'mobiliario_suelto';
+
 // Ítem del catálogo (el modelo/tipo)
 export interface InventoryItem {
   id: string;
@@ -97,6 +99,11 @@ export interface InventoryItem {
   trackByUnit: boolean;
   imageUrl: string | null;
   notes: string | null;
+  // Ubicación física del ítem
+  locationType: LocationType | null;
+  cabinetNumber: string | null;
+  shelfNumber: string | null;
+  locationNote: string | null;
   units?: InventoryUnit[];
   // Calculados por el backend en listados
   totalUnits?: number;
