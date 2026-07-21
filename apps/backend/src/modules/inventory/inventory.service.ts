@@ -39,6 +39,23 @@ export class InventoryService {
     private readonly movementRepo: Repository<InventoryMovement>,
   ) {}
 
+  // Roles que ven inventario de todos los nodos (sin restricción de nodo).
+  private readonly INV_GLOBAL_ROLES = ['admin', 'vicerrector_extension'];
+
+  // SEGURIDAD: valida que un rol de nodo solo acceda a inventario de su propio
+  // nodo. Para llamadas internas (sin `user`) no valida, porque el método
+  // público que originó la llamada ya aplicó su propio control de acceso.
+  private assertNodeReadAccess(itemNodoId: string | null | undefined, user?: User): void {
+    if (!user) return;
+    if (this.INV_GLOBAL_ROLES.includes(user.role)) return;
+    if (!user.nodoId) {
+      throw new ForbiddenException('Tu usuario no tiene un nodo asignado');
+    }
+    if (itemNodoId !== user.nodoId) {
+      throw new ForbiddenException('No tienes acceso a inventario de otro nodo');
+    }
+  }
+
   // ══════════════════════════════════════════════════════════
   // CATEGORÍAS
   // ══════════════════════════════════════════════════════════
@@ -137,13 +154,14 @@ export class InventoryService {
   });
 }
 
-  async getItemById(id: string): Promise<InventoryItem> {
+  async getItemById(id: string, user?: User): Promise<InventoryItem> {
     const item = await this.itemRepo.findOne({
       where: { id, deletedAt: IsNull() },
       relations: ['category', 'units'],
       order: { units: { createdAt: 'ASC' } } as never,
     });
     if (!item) throw new NotFoundException(`Ítem ${id} no encontrado`);
+    this.assertNodeReadAccess(item.nodoId, user);
     return item;
   }
 
@@ -220,20 +238,21 @@ export class InventoryService {
   // UNIDADES FÍSICAS
   // ══════════════════════════════════════════════════════════
 
-  async getUnitsByItem(itemId: string): Promise<InventoryUnit[]> {
-    await this.getItemById(itemId); // Verifica que el ítem exista
+  async getUnitsByItem(itemId: string, user?: User): Promise<InventoryUnit[]> {
+    await this.getItemById(itemId, user); // Verifica existencia + acceso por nodo
     return this.unitRepo.find({
       where: { itemId },
       order: { createdAt: 'ASC' },
     });
   }
 
-  async getUnitById(id: string): Promise<InventoryUnit> {
+  async getUnitById(id: string, user?: User): Promise<InventoryUnit> {
     const unit = await this.unitRepo.findOne({
       where: { id },
       relations: ['item', 'item.category'],
     });
     if (!unit) throw new NotFoundException(`Unidad ${id} no encontrada`);
+    this.assertNodeReadAccess(unit.item?.nodoId, user);
     return unit;
   }
 
@@ -354,8 +373,10 @@ export class InventoryService {
     unitId: string,
     dto: CreateMovementDto,
     userId: string,
+    user?: User,
   ): Promise<InventoryMovement> {
-    const unit = await this.getUnitById(unitId);
+    // getUnitById valida existencia y acceso por nodo (si se pasa `user`)
+    const unit = await this.getUnitById(unitId, user);
 
     // Validaciones según el tipo de movimiento
     if (dto.movementType === MovementType.SALIDA && !dto.destination) {
@@ -413,7 +434,8 @@ export class InventoryService {
     return this.movementRepo.save(movement);
   }
 
-  async getMovementsByUnit(unitId: string): Promise<InventoryMovement[]> {
+  async getMovementsByUnit(unitId: string, user?: User): Promise<InventoryMovement[]> {
+    await this.getUnitById(unitId, user); // Verifica existencia + acceso por nodo
     return this.movementRepo.find({
       where: { unitId },
       order: { movementDate: 'DESC', createdAt: 'DESC' },

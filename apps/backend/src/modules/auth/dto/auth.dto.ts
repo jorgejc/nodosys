@@ -14,4 +14,6 @@ export class LoginDto {
 }
 
 // DTO para el body del POST /auth/register
-export { CreateUserDto as RegisterDto } from '../../users/dto/create-user.dto';
+// Se define en register.dto.ts (NO hereda de CreateUserDto por seguridad:
+// el registro público no puede elegir rol/nodo).
+export { RegisterDto } from './register.dto';

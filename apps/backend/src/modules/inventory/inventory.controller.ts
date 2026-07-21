@@ -43,10 +43,27 @@ export class InventoryController {
   }
 
   // admin / vicerrector_extension: pueden filtrar por nodoId o ver todos.
-  // enlace: siempre forzado a su propio nodoId.
-  private effectiveNodo(user: User, requested?: string): string | undefined {
+  // Roles de nodo (enlace/monitor/auxiliar): forzados a su propio nodoId.
+  // Devuelve:
+  //   undefined → rol global, sin filtro (ve todos los nodos)
+  //   string    → filtrar por ese nodo
+  //   null      → rol de nodo SIN nodo asignado → SIN acceso (forzar vacío)
+  //
+  // SEGURIDAD: para roles de nodo con nodoId nulo NO se devuelve undefined,
+  // porque eso significaría "sin filtro" y expondría el inventario de todos
+  // los nodos. Se devuelve null y cada endpoint responde vacío.
+  private effectiveNodo(user: User, requested?: string): string | null | undefined {
     if (user.role === 'admin' || user.role === 'vicerrector_extension') return requested;
-    return user.nodoId ?? undefined;
+    return user.nodoId ?? null;
+  }
+
+  // Resumen en cero para roles de nodo sin nodo asignado.
+  private emptySummary() {
+    return {
+      total_units: 0, disponible: 0, en_prestamo: 0, en_reparacion: 0,
+      excelente: 0, bueno: 0, regular: 0, malo: 0, dado_de_baja: 0,
+      total_categories: 0, total_items: 0,
+    };
   }
 
   // ── Categorías ────────────────────────────────────────────
@@ -56,6 +73,7 @@ export class InventoryController {
   getCategories(@CurrentUser() user: User, @Query('nodoId') nodoId?: string) {
     this.requireAccess(user);
     const nodo = this.effectiveNodo(user, nodoId);
+    if (nodo === null) return []; // rol de nodo sin nodo asignado
     return this.inventoryService.getCategories(nodo);
   }
 
@@ -78,6 +96,7 @@ export class InventoryController {
   getCabinetNumbers(@CurrentUser() user: User, @Query('nodoId') nodoId?: string) {
     this.requireAccess(user);
     const nodo = this.effectiveNodo(user, nodoId);
+    if (nodo === null) return []; // rol de nodo sin nodo asignado
     return this.inventoryService.getCabinetNumbers(nodo);
   }
 
@@ -88,6 +107,7 @@ export class InventoryController {
   getSummary(@CurrentUser() user: User, @Query('nodoId') nodoId?: string) {
     this.requireAccess(user);
     const nodo = this.effectiveNodo(user, nodoId);
+    if (nodo === null) return this.emptySummary(); // rol de nodo sin nodo asignado
     return this.inventoryService.getSummary(nodo);
   }
 
@@ -97,6 +117,7 @@ export class InventoryController {
   getActiveLoans(@CurrentUser() user: User, @Query('nodoId') nodoId?: string) {
     this.requireAccess(user);
     const nodo = this.effectiveNodo(user, nodoId);
+    if (nodo === null) return []; // rol de nodo sin nodo asignado
     return this.inventoryService.getActiveLoans(nodo);
   }
 
@@ -128,7 +149,7 @@ export class InventoryController {
   @ApiOperation({ summary: 'Detalle de un ítem con sus unidades' })
   getItem(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     this.requireAccess(user);
-    return this.inventoryService.getItemById(id);
+    return this.inventoryService.getItemById(id, user);
   }
 
   @Patch('items/:id')
@@ -155,7 +176,7 @@ export class InventoryController {
   @ApiOperation({ summary: 'Listar unidades físicas de un ítem' })
   getUnits(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     this.requireAccess(user);
-    return this.inventoryService.getUnitsByItem(id);
+    return this.inventoryService.getUnitsByItem(id, user);
   }
 
   @Post('items/:id/units')
@@ -185,7 +206,7 @@ export class InventoryController {
   @ApiOperation({ summary: 'Detalle de una unidad física' })
   getUnit(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     this.requireAccess(user);
-    return this.inventoryService.getUnitById(id);
+    return this.inventoryService.getUnitById(id, user);
   }
 
   @Patch('units/:id')
@@ -203,7 +224,7 @@ export class InventoryController {
   @ApiOperation({ summary: 'Historial de movimientos de una unidad' })
   getMovements(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     this.requireAccess(user);
-    return this.inventoryService.getMovementsByUnit(id);
+    return this.inventoryService.getMovementsByUnit(id, user);
   }
 
   @Post('units/:id/movements')
@@ -214,6 +235,6 @@ export class InventoryController {
     @CurrentUser() user: User,
   ) {
     this.requireWriteAccess(user);
-    return this.inventoryService.registerMovement(unitId, dto, user.id);
+    return this.inventoryService.registerMovement(unitId, dto, user.id, user);
   }
 }

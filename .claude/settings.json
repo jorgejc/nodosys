@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/c/iudigital/nodosys/apps/backend/node_modules/.bin/tsc --project apps/backend/tsconfig.json --noEmit)",
+      "Bash(/c/iudigital/nodosys/apps/frontend/node_modules/.bin/tsc --project apps/frontend/tsconfig.app.json --noEmit)",
+      "Bash(/c/iudigital/nodosys/apps/frontend/node_modules/.bin/tsc --project apps/frontend/tsconfig.json --noEmit)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(awk '/Seed de municipios/,/AS v\\\\\\(name, department\\\\\\)/' migration-catalogos.sql)",
+      "Bash(awk '/Seed de estrategias/,/AS v\\\\\\(name\\\\\\)/' migration-catalogos.sql)",
+      "Bash(node -e \"const s=require\\('./package.json'\\).scripts; console.log\\(JSON.stringify\\(s,null,2\\)\\)\")",
+      "Bash(sed -E 's/\\(PASSWORD|PASS\\)=.*/\\\\1=***/I')"
+    ]
+  }
+}
