@@ -12,7 +12,8 @@
     "test:coverage": "jest --coverage",
     "migration:generate": "typeorm-ts-node-commonjs migration:generate",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
-    "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts"
+    "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
+    "test:security": "jest --config jest-security.json --runInBand --forceExit"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

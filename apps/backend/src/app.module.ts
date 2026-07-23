@@ -18,6 +18,9 @@ import { WorkPlanModule } from './modules/workplan/workplan.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { NodosModule } from './modules/nodos/nodos.module';
+import { SessionsModule } from './modules/sessions/sessions.module';
+import { ProcessesModule } from './modules/processes/processes.module';
+import { CatalogsModule } from './modules/catalogs/catalogs.module';
 
 @Module({
   imports: [
@@ -31,6 +34,9 @@ import { NodosModule } from './modules/nodos/nodos.module';
     ReportsModule,
     ActivitiesModule,
     NodosModule,
+    SessionsModule,
+    ProcessesModule,
+    CatalogsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

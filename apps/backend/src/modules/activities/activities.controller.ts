@@ -27,12 +27,27 @@ export class ActivitiesController {
   @ApiOperation({ summary: 'Listar solicitudes (propias o todas si admin/decano)' })
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'userId', required: false })
+  @ApiQuery({ name: 'processId', required: false })
+  @ApiQuery({ name: 'sessionId', required: false })
+  @ApiQuery({ name: 'nodoId', required: false })
   findAll(
     @CurrentUser() user: User,
     @Query('status') status?: string,
     @Query('userId') userId?: string,
+    @Query('processId') processId?: string,
+    @Query('sessionId') sessionId?: string,
+    @Query('nodoId') nodoId?: string,
   ) {
-    return this.svc.findAll(user, { status, userId });
+    return this.svc.findAll(user, { status, userId, processId, sessionId, nodoId });
+  }
+
+  @Get('last-for-process/:processId')
+  @ApiOperation({ summary: 'Última actividad del proceso (para precarga de recursos)' })
+  getLastForProcess(
+    @Param('processId', ParseUUIDPipe) processId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.svc.getLastForProcess(processId, user);
   }
 
   @Post()

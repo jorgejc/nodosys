@@ -16,6 +16,8 @@ import { Repository, ILike, Or } from 'typeorm';
 import { User, UserRole } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { SELF_EDITABLE_FIELDS } from './dto/update-self.dto';
+import { RegisterDto } from '../auth/dto/register.dto';
  
 // Roles que pueden ver usuarios de forma ampliada
 const MANAGER_ROLES: UserRole[] = [
@@ -49,8 +51,8 @@ export class UsersService {
       .select([
       'u.id', 'u.name', 'u.email', 'u.role',
       'u.documentType', 'u.documentNumber',
-      'u.faculty', 'u.program', 'u.nodoId', 'u.nodoName',
-      'u.phone', 'u.position', 'u.isActive', 'u.createdAt',
+      'u.faculty', 'u.program', 'u.facultyId', 'u.programId',
+      'u.nodoId', 'u.nodoName', 'u.phone', 'u.isActive', 'u.createdAt',
       ])
       .orderBy('u.name', 'ASC');
  
@@ -107,46 +109,64 @@ export class UsersService {
       email: dto.email,
       passwordHash: dto.password,
       role: dto.role as UserRole ?? UserRole.DOCENTE,
-      nodoId:   dto.nodoId   ?? creator.nodoId   ?? null,
-      nodoName: dto.nodoName ?? creator.nodoName ?? null,
-      faculty: dto.faculty ?? null,
-      program: dto.program ?? null,
-      phone: dto.phone ?? null,
-      position: dto.position ?? null,
+      nodoId:    dto.nodoId    ?? creator.nodoId   ?? null,
+      nodoName:  dto.nodoName  ?? creator.nodoName ?? null,
+      faculty:   dto.faculty   ?? null,
+      program:   dto.program   ?? null,
+      facultyId: dto.facultyId ?? null,
+      programId: dto.programId ?? null,
+      phone:     dto.phone     ?? null,
     });
 
     return this.repo.save(user);
   }
- 
+
   // Registro público (primer uso o auto-registro)
-  async create(dto: CreateUserDto): Promise<User> {
+  // SEGURIDAD: el rol se fuerza SIEMPRE a `docente` y no se aceptan campos
+  // privilegiados (nodoId/nodoName/facultyId/programId). El tipo RegisterDto
+  // ni siquiera los expone, pero además los fijamos explícitamente aquí para
+  // que un cambio futuro del DTO no reabra la escalada de privilegios.
+  async create(dto: RegisterDto): Promise<User> {
     const existing = await this.repo.findOne({ where: { email: dto.email } });
     if (existing) throw new ConflictException(`El email ${dto.email} ya está registrado`);
     const user = this.repo.create({
-      name: dto.name,
-      email: dto.email,
+      name:         dto.name,
+      email:        dto.email,
       passwordHash: dto.password,
-      role: dto.role as UserRole ?? UserRole.DOCENTE,
-      nodoId: dto.nodoId ?? null,
-      faculty: dto.faculty ?? null,
-      program: dto.program ?? null,
-      phone: dto.phone ?? null,
-      position: dto.position ?? null,
+      role:         UserRole.DOCENTE, // ← forzado; nunca desde el body
+      documentType: dto.documentType ?? null,
+      documentNumber: dto.documentNumber ?? null,
+      faculty:      dto.faculty ?? null,
+      program:      dto.program ?? null,
+      // Campos privilegiados: siempre null en el registro público
+      nodoId:    null,
+      nodoName:  null,
+      facultyId: null,
+      programId: null,
     });
     return this.repo.save(user);
   }
- 
+
   async update(id: string, dto: UpdateUserDto, currentUser: User): Promise<User> {
     const user = await this.findById(id);
- 
-    // El enlace solo puede editar usuarios de su nodo
-    if (currentUser.role === UserRole.ENLACE) {
-      if (user.nodoId !== currentUser.nodoId) {
-        throw new ForbiddenException('Solo puedes editar usuarios de tu nodo');
+
+    if (currentUser.role === UserRole.ADMIN) {
+      // El admin puede modificar cualquier campo.
+      Object.assign(user, dto);
+    } else {
+      // SEGURIDAD: cualquier usuario NO admin (el controller ya garantiza que
+      // solo puede ser una auto-edición) queda limitado a la whitelist.
+      // Se descartan role, nodoId, nodoName, isActive, facultyId y programId
+      // para impedir la auto-promoción de rol o el salto de nodo.
+      const safe: Partial<User> = {};
+      for (const field of SELF_EDITABLE_FIELDS) {
+        if (dto[field] !== undefined) {
+          (safe as Record<string, unknown>)[field] = dto[field];
+        }
       }
+      Object.assign(user, safe);
     }
- 
-    Object.assign(user, dto);
+
     return this.repo.save(user);
   }
  

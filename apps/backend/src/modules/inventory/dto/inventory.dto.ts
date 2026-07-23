@@ -11,6 +11,7 @@ import {
   IsEnum, IsNumber, IsDateString, MaxLength,
   IsPositive, IsInt, ValidateNested, ArrayMinSize,
 } from 'class-validator';
+import { LocationType } from '../entities/inventory-item.entity';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { UnitCondition } from '../entities/inventory-unit.entity';
@@ -61,6 +62,23 @@ export class CreateInventoryItemDto {
   @ApiPropertyOptional({ description: 'ID del nodo al que pertenece' })
   @IsUUID('loose' as any) @IsOptional()
   nodoId?: string;
+
+  // ── Ubicación física ─────────────────────────────────────
+  @ApiPropertyOptional({ enum: LocationType, description: 'Tipo de ubicación' })
+  @IsEnum(LocationType) @IsOptional()
+  locationType?: LocationType;
+
+  @ApiPropertyOptional({ example: '3', description: 'Número o etiqueta del gabinete' })
+  @IsString() @MaxLength(100) @IsOptional()
+  cabinetNumber?: string;
+
+  @ApiPropertyOptional({ example: '2', description: 'Número de entrepaño dentro del gabinete' })
+  @IsString() @MaxLength(100) @IsOptional()
+  shelfNumber?: string;
+
+  @ApiPropertyOptional({ example: 'Junto a la puerta principal', description: 'Nota libre para mobiliario suelto' })
+  @IsString() @MaxLength(300) @IsOptional()
+  locationNote?: string;
 }
 
 export class UpdateInventoryItemDto extends PartialType(CreateInventoryItemDto) {}

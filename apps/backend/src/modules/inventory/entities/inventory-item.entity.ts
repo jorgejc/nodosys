@@ -21,6 +21,11 @@ import {
   CreateDateColumn, UpdateDateColumn,
   ManyToOne, OneToMany, JoinColumn,
 } from 'typeorm';
+
+export enum LocationType {
+  GABINETE         = 'gabinete',
+  MOBILIARIO_SUELTO = 'mobiliario_suelto',
+}
 import { InventoryCategory } from './inventory-category.entity';
 import { InventoryUnit } from './inventory-unit.entity';
 
@@ -70,6 +75,19 @@ export class InventoryItem {
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;
+
+  // ── Ubicación física del ítem ────────────────────────────
+  @Column({ name: 'location_type', type: 'enum', enum: LocationType, nullable: true })
+  locationType: LocationType | null;
+
+  @Column({ name: 'cabinet_number', type: 'varchar', length: 100, nullable: true })
+  cabinetNumber: string | null;
+
+  @Column({ name: 'shelf_number', type: 'varchar', length: 100, nullable: true })
+  shelfNumber: string | null;
+
+  @Column({ name: 'location_note', type: 'varchar', length: 300, nullable: true })
+  locationNote: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

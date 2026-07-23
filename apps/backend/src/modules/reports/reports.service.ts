@@ -4,14 +4,18 @@
  * pdfmake 0.2.x: usa new PdfPrinter(fonts) → createPdfKitDocument(docDef)
  * exceljs:       usa Workbook/Worksheet API con estilos completos
  */
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, Between, FindOptionsWhere } from 'typeorm';
+import * as fs from 'fs';
+import * as path from 'path';
 import { InventoryItem } from '../inventory/entities/inventory-item.entity';
 import { InventoryUnit } from '../inventory/entities/inventory-unit.entity';
 import { WorkPlan } from '../workplan/entities/work-plan.entity';
 import { WorkPlanAxis } from '../workplan/entities/work-plan-axis.entity';
 import { AxisActivity } from '../workplan/entities/axis-activity.entity';
+import { ActivityRequest } from '../activities/entities/activity-request.entity';
+import { User, UserRole } from '../users/entities/user.entity';
 import * as ExcelJS from 'exceljs';
 
 // pdfmake 0.3.x — importar así para Node.js
@@ -69,8 +73,52 @@ function buildPdf(docDefinition: object): Promise<Buffer> {
   });
 }
 
+// ── Asset loader ─────────────────────────────────────────
+function readPngBase64(filename: string): string {
+  const candidates = [
+    path.join(__dirname, '..', '..', 'assets', filename),
+    path.join(process.cwd(), 'src', 'assets', filename),
+    path.join(process.cwd(), 'apps', 'backend', 'src', 'assets', filename),
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        return `data:image/png;base64,${fs.readFileSync(p).toString('base64')}`;
+      }
+    } catch { /* try next */ }
+  }
+  return '';
+}
+
+function getPngRatio(filename: string, fallback: number): number {
+  const candidates = [
+    path.join(__dirname, '..', '..', 'assets', filename),
+    path.join(process.cwd(), 'src', 'assets', filename),
+    path.join(process.cwd(), 'apps', 'backend', 'src', 'assets', filename),
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        const buf = Buffer.alloc(24);
+        const fd = fs.openSync(p, 'r');
+        fs.readSync(fd, buf, 0, 24, 0);
+        fs.closeSync(fd);
+        return buf.readUInt32BE(20) / buf.readUInt32BE(16);
+      }
+    } catch { /* try next */ }
+  }
+  return fallback;
+}
+
 @Injectable()
-export class ReportsService {
+export class ReportsService implements OnModuleInit {
+  private readonly log = new Logger(ReportsService.name);
+
+  private headerBase64  = '';
+  private footerBase64  = '';
+  private headerRatio   = 106 / 794;
+  private footerRatio   = 114 / 857;
+
   constructor(
     @InjectRepository(InventoryItem)
     private readonly itemRepo: Repository<InventoryItem>,
@@ -82,11 +130,67 @@ export class ReportsService {
     private readonly axisRepo: Repository<WorkPlanAxis>,
     @InjectRepository(AxisActivity)
     private readonly activityRepo: Repository<AxisActivity>,
+    @InjectRepository(ActivityRequest)
+    private readonly actReqRepo: Repository<ActivityRequest>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
+
+  onModuleInit() {
+    this.headerBase64 = readPngBase64('iudigital-header.png');
+    this.footerBase64 = readPngBase64('iudigital-footer.png');
+    this.headerRatio  = getPngRatio('iudigital-header.png', 106 / 794);
+    this.footerRatio  = getPngRatio('iudigital-footer.png', 114 / 857);
+    if (this.headerBase64) {
+      this.log.log(`Institutional images loaded — header ratio ${this.headerRatio.toFixed(4)}, footer ratio ${this.footerRatio.toFixed(4)}`);
+    } else {
+      this.log.warn('Institutional images NOT found — PDFs will use text headers');
+    }
+  }
+
+  private headerHPt(pageWidthPt: number) { return Math.ceil(this.headerRatio * pageWidthPt); }
+  private footerHPt(pageWidthPt: number) { return Math.ceil(this.footerRatio * pageWidthPt); }
+  private topMarginPt(pageWidthPt: number)    { return this.headerHPt(pageWidthPt) + 10; }
+  private bottomMarginPt(pageWidthPt: number) { return this.footerHPt(pageWidthPt) + 14; }
+
+  private makePdfHeader() {
+    if (!this.headerBase64) return undefined;
+    const ratio = this.headerRatio;
+    const data  = this.headerBase64;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (_p: number, _c: number, ps: any) => ({
+      image: data, width: ps.width, height: Math.ceil(ratio * ps.width), margin: [0, 0, 0, 0],
+    });
+  }
+
+  private makePdfFooter() {
+    if (!this.footerBase64) return undefined;
+    const ratio = this.footerRatio;
+    const data  = this.footerBase64;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (page: number, pages: number, ps: any) => ([
+      { text: `Página ${page} de ${pages}`, fontSize: 7, color: '#555555', alignment: 'right', margin: [0, 0, 10, 3] },
+      { image: data, width: ps.width, height: Math.ceil(ratio * ps.width), margin: [0, 0, 0, 0] },
+    ]);
+  }
 
   // ══════════════════════════════════════════════════════════
   // INVENTARIO → PDF
   // ══════════════════════════════════════════════════════════
+  private fmtPdfLocation(item: InventoryItem): string {
+    if (!item.locationType) return '—';
+    if (item.locationType === 'gabinete') {
+      const parts = [
+        item.cabinetNumber ? `G${item.cabinetNumber}` : null,
+        item.shelfNumber   ? `E${item.shelfNumber}`   : null,
+      ].filter(Boolean);
+      return parts.length ? parts.join('/') : '—';
+    }
+    // mobiliario_suelto
+    if (!item.locationNote) return '—';
+    return item.locationNote.length > 22 ? item.locationNote.substring(0, 22) + '…' : item.locationNote;
+  }
+
   async generateInventoryPdf(nodoId?: string, nodoLabel = 'IU DIGITAL'): Promise<Buffer> {
     const items = await this.itemRepo.find({
       where: { deletedAt: IsNull(), ...(nodoId ? { nodoId } : {}) },
@@ -102,76 +206,82 @@ export class ReportsService {
       byCategory[cat].push(item);
     });
 
-    // Encabezados de tabla
+    // LETTER landscape: 792pt wide, margins [40,top,40,bottom] → 712pt usable
+    // 8 columnas: [20,'*',88,68,32,42,42,50] → fixed=342 → '*'=370pt
+    const COLS = 8;
     const tableBody: unknown[][] = [[
-      { text: '#', style: 'th' },
-      { text: 'Ítem', style: 'th' },
+      { text: '#',             style: 'th' },
+      { text: 'Ítem',         style: 'th' },
       { text: 'Marca / Modelo', style: 'th' },
-      { text: 'Total', style: 'th' },
-      { text: 'Disponible', style: 'th' },
-      { text: 'Préstamo', style: 'th' },
-      { text: 'Problemas', style: 'th' },
+      { text: 'Ubicación',    style: 'th' },
+      { text: 'Total',        style: 'th' },
+      { text: 'Disponible',   style: 'th' },
+      { text: 'Préstamo',     style: 'th' },
+      { text: 'Problemas',    style: 'th' },
     ]];
 
     let seq = 1;
     Object.entries(byCategory).forEach(([catName, catItems]) => {
-      // Fila separadora de categoría
       tableBody.push([
-        { text: `  ${catName}`, colSpan: 7, style: 'catRow', fillColor: '#1E1E1E' },
-        '', '', '', '', '', '',
+        { text: `  ${catName}`, colSpan: COLS, style: 'catRow', fillColor: '#1E1E1E' },
+        '', '', '', '', '', '', '',
       ]);
       catItems.forEach(item => {
-        const units = item.units ?? [];
+        const units   = item.units ?? [];
         const avail   = units.filter(u => u.status === 'disponible').length;
         const loan    = units.filter(u => u.status === 'en_prestamo').length;
         const damaged = units.filter(u => ['malo','dado_de_baja'].includes(u.condition)).length;
         tableBody.push([
-          { text: seq++, style: 'td', alignment: 'center' },
-          { text: item.name, style: 'td' },
+          { text: seq++,                            style: 'td', alignment: 'center' },
+          { text: item.name,                        style: 'td' },
           { text: [item.brand, item.model].filter(Boolean).join(' · ') || '—', style: 'tdMuted' },
-          { text: units.length, style: 'td', alignment: 'center', bold: true },
-          { text: avail,        style: 'td', alignment: 'center', color: '#4ADE80' },
-          { text: loan || '—', style: 'td', alignment: 'center', color: '#38BDF8' },
-          { text: damaged || '—', style: 'td', alignment: 'center',
+          { text: this.fmtPdfLocation(item),        style: 'tdMuted' },
+          { text: units.length,                     style: 'td', alignment: 'center', bold: true },
+          { text: avail,                            style: 'td', alignment: 'center', color: '#4ADE80' },
+          { text: loan || '—',                      style: 'td', alignment: 'center', color: '#38BDF8' },
+          { text: damaged || '—',                   style: 'td', alignment: 'center',
             color: damaged > 0 ? '#F87171' : '#666666', bold: damaged > 0 },
         ]);
       });
     });
 
-    // Totales finales
     const totalUnits   = items.reduce((s, i) => s + (i.units?.length ?? 0), 0);
     const totalAvail   = items.reduce((s, i) => s + (i.units?.filter(u => u.status === 'disponible').length ?? 0), 0);
     const totalDamaged = items.reduce((s, i) => s + (i.units?.filter(u => ['malo','dado_de_baja'].includes(u.condition)).length ?? 0), 0);
     tableBody.push([
-      { text: 'TOTAL', colSpan: 3, style: 'totalRow', fillColor: '#FF6B2B', color: '#FFFFFF', bold: true },
-      '', '',
-      { text: totalUnits,   style: 'totalRow', fillColor: '#FF6B2B', color: '#FFFFFF', bold: true, alignment: 'center' },
-      { text: totalAvail,   style: 'totalRow', fillColor: '#FF6B2B', color: '#4ADE80', bold: true, alignment: 'center' },
+      { text: 'TOTAL', colSpan: 4, style: 'totalRow', fillColor: '#FF6B2B', color: '#FFFFFF', bold: true },
+      '', '', '',
+      { text: totalUnits,                           style: 'totalRow', fillColor: '#FF6B2B', color: '#FFFFFF', bold: true, alignment: 'center' },
+      { text: totalAvail,                           style: 'totalRow', fillColor: '#FF6B2B', color: '#4ADE80', bold: true, alignment: 'center' },
       { text: totalUnits - totalAvail - totalDamaged, style: 'totalRow', fillColor: '#FF6B2B', color: '#38BDF8', bold: true, alignment: 'center' },
-      { text: totalDamaged, style: 'totalRow', fillColor: '#FF6B2B', color: '#F87171', bold: true, alignment: 'center' },
+      { text: totalDamaged,                         style: 'totalRow', fillColor: '#FF6B2B', color: '#F87171', bold: true, alignment: 'center' },
     ]);
 
+    // LETTER landscape → pageWidth = 792pt
+    const PW = 792;
     const docDef = {
       pageSize: 'LETTER',
-      pageMargins: [40, 55, 40, 45],
-      header: {
+      pageOrientation: 'landscape',
+      pageMargins: [40, this.topMarginPt(PW), 40, this.bottomMarginPt(PW)],
+      header: this.makePdfHeader() ?? {
         columns: [
           { text: `NODOSYS · IU DIGITAL · ${nodoLabel}`, fontSize: 8, color: '#888888', margin: [40, 15, 0, 0] },
           { text: `Generado: ${new Date().toLocaleDateString('es-CO')}`, fontSize: 8, color: '#888888', alignment: 'right', margin: [0, 15, 40, 0] },
         ],
       },
-      footer: (page: number, pages: number) => ({
+      footer: this.makePdfFooter() ?? ((page: number, pages: number) => ({
         text: `Página ${page} de ${pages}  ·  NodoSys Sistema de Gestión`,
         fontSize: 8, color: '#555555', alignment: 'center', margin: [0, 10, 0, 0],
-      }),
+      })),
       content: [
         { text: 'REPORTE DE INVENTARIO', style: 'title' },
         { text: 'Estado actual de todos los equipos y materiales del nodo', style: 'subtitle' },
-        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 520, y2: 0, lineWidth: 2, lineColor: '#FF6B2B' }], margin: [0, 0, 0, 14] },
+        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 712, y2: 0, lineWidth: 2, lineColor: '#FF6B2B' }], margin: [0, 0, 0, 14] },
         {
           table: {
             headerRows: 1,
-            widths: [22, '*', 100, 36, 48, 48, 52],
+            // fixed: 20+88+68+32+42+42+50 = 342 → '*' = 712-342 = 370
+            widths: [20, '*', 88, 68, 32, 42, 42, 50],
             body: tableBody,
           },
           layout: {
@@ -221,8 +331,8 @@ export class ReportsService {
     // ── Hoja 1: Resumen por ítem ──────────────────────────
     const ws1 = wb.addWorksheet('Resumen Inventario');
 
-    // Título
-    ws1.mergeCells('A1:I1');
+    // Título (10 columnas: A:J)
+    ws1.mergeCells('A1:J1');
     const titleCell = ws1.getCell('A1');
     titleCell.value = `INVENTARIO ${nodoLabel} · IU DIGITAL`;
     titleCell.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
@@ -230,14 +340,14 @@ export class ReportsService {
     titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
     ws1.getRow(1).height = 30;
 
-    ws1.mergeCells('A2:I2');
+    ws1.mergeCells('A2:J2');
     const subCell = ws1.getCell('A2');
     subCell.value = `Generado: ${new Date().toLocaleDateString('es-CO', { dateStyle: 'full' })}`;
     subCell.font = { italic: true, size: 10, color: { argb: 'FF888888' } };
     subCell.alignment = { horizontal: 'center' };
 
-    // Encabezados
-    const headers = ['#', 'Categoría', 'Ítem', 'Marca', 'Modelo', 'Total', 'Disponibles', 'En Préstamo', 'Con Problemas'];
+    // Encabezados — añadida columna Ubicación (F)
+    const headers = ['#', 'Categoría', 'Ítem', 'Marca', 'Modelo', 'Ubicación', 'Total', 'Disponibles', 'En Préstamo', 'Con Problemas'];
     const hr = ws1.getRow(4);
     headers.forEach((h, i) => {
       const c = hr.getCell(i + 1);
@@ -257,7 +367,8 @@ export class ReportsService {
       const loan    = units.filter(u => u.status === 'en_prestamo').length;
       const damaged = units.filter(u => ['malo','dado_de_baja'].includes(u.condition)).length;
       const row = ws1.getRow(excelRow++);
-      row.values = [seq++, item.category?.name ?? '', item.name, item.brand ?? '—', item.model ?? '—', units.length, avail, loan, damaged];
+      row.values = [seq++, item.category?.name ?? '', item.name, item.brand ?? '—', item.model ?? '—',
+        this.fmtPdfLocation(item), units.length, avail, loan, damaged];
       const bg = excelRow % 2 === 0 ? 'FFF5F5F5' : 'FFFFFFFF';
       row.eachCell(c => {
         c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
@@ -265,9 +376,9 @@ export class ReportsService {
         c.alignment = { vertical: 'middle' };
         c.border = { bottom: { style: 'thin', color: { argb: 'FFEEEEEE' } } };
       });
-      if (damaged > 0) row.getCell(9).font = { bold: true, color: { argb: 'FFCC0000' }, size: 10 };
+      if (damaged > 0) row.getCell(10).font = { bold: true, color: { argb: 'FFCC0000' }, size: 10 };
     });
-    [4, 15, 32, 14, 16, 10, 13, 13, 14].forEach((w, i) => { ws1.getColumn(i + 1).width = w; });
+    [4, 15, 32, 14, 16, 20, 10, 13, 13, 14].forEach((w, i) => { ws1.getColumn(i + 1).width = w; });
 
     // ── Hoja 2: Unidades físicas ──────────────────────────
     const ws2 = wb.addWorksheet('Unidades Físicas');
@@ -464,20 +575,21 @@ export class ReportsService {
       });
     });
 
+    // LEGAL landscape: 14in × 8.5in = 1008pt × 612pt
     return buildPdf({
       pageSize: 'LEGAL',
       pageOrientation: 'landscape',
-      pageMargins: [28, 45, 28, 38],
-      header: {
+      pageMargins: [28, this.topMarginPt(1008), 28, this.bottomMarginPt(1008)],
+      header: this.makePdfHeader() ?? {
         columns: [
           { text: 'NodoSys · IU Digital', fontSize: 7, color: '#555555', margin: [28, 14, 0, 0] },
           { text: `Generado: ${new Date().toLocaleString('es-CO')}`, fontSize: 7, color: '#555555', alignment: 'right', margin: [0, 14, 28, 0] },
         ],
       },
-      footer: (page: number, pages: number) => ({
+      footer: this.makePdfFooter() ?? ((page: number, pages: number) => ({
         text: `Página ${page} de ${pages}  ·  Plan de Trabajo Profesoral DO-F-002 · IU Digital`,
         fontSize: 7, color: '#555555', alignment: 'center', margin: [0, 8, 0, 0],
-      }),
+      })),
       content,
       styles: {
         axisTitle: { fontSize: 11, bold: true, color: '#FF6B2B' },
@@ -608,6 +720,441 @@ export class ReportsService {
     ws.getColumn(2).width = 36;
     ws.getColumn(3).width = 22;
     [4,5,6,7,8,9].forEach(i => { ws.getColumn(i).width = 13; });
+
+    const buf = await wb.xlsx.writeBuffer();
+    return Buffer.from(buf);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // ACTIVIDADES → helpers internos
+  // ══════════════════════════════════════════════════════════
+
+  private readonly ACTIVITY_ROLES_GLOBAL: UserRole[] = [
+    UserRole.ADMIN, UserRole.VICERRECTOR_EXTENSION,
+  ];
+
+  private readonly STATUS_LABELS_ACT: Record<string, string> = {
+    borrador:     'Borrador',
+    pendiente:    'Pendiente',
+    aprobada:     'Aprobada',
+    rechazada:    'Rechazada',
+    en_ejecucion: 'En ejecución',
+    ejecutada:    'Ejecutada',
+    cerrada:      'Cerrada',
+  };
+
+  private async fetchActivities(
+    user: User,
+    filters: { dateFrom?: string; dateTo?: string; status?: string; userId?: string; nodoId?: string },
+  ): Promise<ActivityRequest[]> {
+    const qb = this.actReqRepo
+      .createQueryBuilder('r')
+      .leftJoinAndSelect('r.user', 'u')
+      .leftJoinAndSelect('r.strategy', 'st')
+      .leftJoinAndSelect('r.municipality', 'mu')
+      .orderBy('r.activity_date', 'DESC');
+
+    if (!this.ACTIVITY_ROLES_GLOBAL.includes(user.role)) {
+      qb.andWhere('r.user_id = :uid', { uid: user.id });
+    } else if (filters.userId) {
+      qb.andWhere('r.user_id = :uid', { uid: filters.userId });
+    }
+
+    if (filters.nodoId && this.ACTIVITY_ROLES_GLOBAL.includes(user.role)) {
+      qb.andWhere('u.nodo_id = :nodoId', { nodoId: filters.nodoId });
+    }
+    if (filters.status)   qb.andWhere('r.status = :status', { status: filters.status });
+    if (filters.dateFrom) qb.andWhere('r.activity_date >= :df', { df: filters.dateFrom });
+    if (filters.dateTo)   qb.andWhere('r.activity_date <= :dt', { dt: filters.dateTo });
+
+    return qb.getMany();
+  }
+
+  private fmtDateAct(d: Date | string | null): string {
+    if (!d) return '—';
+    return new Date(d).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  private fmtCOP(n: number | null | undefined): string {
+    if (!n) return '—';
+    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // ACTIVIDADES → PDF
+  // ══════════════════════════════════════════════════════════
+  async generateActivitiesPdf(
+    user: User,
+    filters: { dateFrom?: string; dateTo?: string; status?: string; userId?: string; nodoId?: string },
+  ): Promise<Buffer> {
+    const records = await this.fetchActivities(user, filters);
+
+    const tableBody: unknown[][] = [[
+      { text: 'Código',        style: 'th' },
+      { text: 'Título',        style: 'th' },
+      { text: 'Docente',       style: 'th' },
+      { text: 'Fecha',         style: 'th' },
+      { text: 'Municipio',     style: 'th' },
+      { text: 'Estrategia',    style: 'th' },
+      { text: 'Participantes', style: 'th' },
+      { text: 'Total COP',     style: 'th' },
+      { text: 'Estado',        style: 'th' },
+      { text: 'Pago',          style: 'th' },
+    ]];
+
+    records.forEach((r, i) => {
+      const total = (r as any).totalEstimated ?? 0;
+      tableBody.push([
+        { text: r.activityCode ?? '—', style: 'tdMono' },
+        { text: r.title, style: 'td' },
+        { text: (r as any).user?.name ?? '—', style: 'tdMuted' },
+        { text: this.fmtDateAct(r.activityDate), style: 'tdMono' },
+        { text: (r as any).municipality?.name ?? '—', style: 'tdMuted' },
+        { text: (r as any).strategy?.name ?? '—', style: 'tdMuted' },
+        { text: r.estimatedParticipants ?? '—', style: 'td', alignment: 'center' },
+        { text: this.fmtCOP(total), style: 'tdMono' },
+        {
+          text: this.STATUS_LABELS_ACT[r.status] ?? r.status,
+          style: 'td',
+          color: r.status === 'aprobada' ? '#4ADE80'
+            : r.status === 'rechazada'   ? '#F87171'
+            : r.status === 'cerrada'     ? '#888888' : '#DDDDDD',
+        },
+        { text: r.paymentType ?? '—', style: 'tdMuted' },
+      ]);
+    });
+
+    if (records.length === 0) {
+      tableBody.push([{ text: 'Sin registros para los filtros seleccionados.', colSpan: 10, style: 'tdMuted', alignment: 'center' }, ...Array(9).fill('')]);
+    }
+
+    const subtitle = [
+      filters.dateFrom ? `Desde: ${filters.dateFrom}` : null,
+      filters.dateTo   ? `Hasta: ${filters.dateTo}`   : null,
+      filters.status   ? `Estado: ${this.STATUS_LABELS_ACT[filters.status] ?? filters.status}` : null,
+    ].filter(Boolean).join('  ·  ') || 'Todos los registros';
+
+    const docDef = {
+      pageSize: 'LEGAL',
+      pageOrientation: 'landscape',
+      pageMargins: [28, this.topMarginPt(1008), 28, this.bottomMarginPt(1008)],
+      header: this.makePdfHeader() ?? {
+        columns: [
+          { text: 'NodoSys · IU Digital · Reporte de Actividades', fontSize: 7, color: '#555555', margin: [28, 14, 0, 0] },
+          { text: `Generado: ${new Date().toLocaleString('es-CO')}`, fontSize: 7, color: '#555555', alignment: 'right', margin: [0, 14, 28, 0] },
+        ],
+      },
+      footer: this.makePdfFooter() ?? ((page: number, pages: number) => ({
+        text: `Página ${page} de ${pages}  ·  Reporte de Actividades · IU Digital`,
+        fontSize: 7, color: '#555555', alignment: 'center', margin: [0, 8, 0, 0],
+      })),
+      content: [
+        { text: 'REPORTE DE ACTIVIDADES Y VIÁTICOS', style: 'title' },
+        { text: subtitle, style: 'subtitle' },
+        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 970, y2: 0, lineWidth: 2, lineColor: '#FF6B2B' }], margin: [0, 0, 0, 12] },
+        {
+          table: {
+            headerRows: 1,
+            widths: [46, '*', 80, 54, 68, 68, 44, 62, 54, 40],
+            body: tableBody,
+          },
+          layout: {
+            fillColor: (row: number) => row === 0 ? '#222222' : row % 2 === 0 ? '#131313' : '#0D0D0D',
+            hLineColor: () => '#2A2A2A', vLineColor: () => '#2A2A2A',
+            hLineWidth: () => 0.4, vLineWidth: () => 0.4,
+            paddingTop: () => 3, paddingBottom: () => 3,
+          },
+        },
+        { text: `\nTotal: ${records.length} actividades`, fontSize: 9, color: '#888888', margin: [0, 8, 0, 0] },
+      ],
+      styles: {
+        title:   { fontSize: 14, bold: true, color: '#FFFFFF', margin: [0, 0, 0, 4] },
+        subtitle:{ fontSize: 9,  color: '#888888', margin: [0, 0, 0, 10] },
+        th:      { fontSize: 8, bold: true, color: '#FFFFFF', margin: [2, 3] },
+        td:      { fontSize: 8, color: '#DDDDDD', margin: [2, 2] },
+        tdMuted: { fontSize: 7, color: '#AAAAAA', margin: [2, 2] },
+        tdMono:  { fontSize: 7, color: '#CCCCCC', margin: [2, 2] },
+      },
+      defaultStyle: { font: 'Roboto', color: '#DDDDDD' },
+    };
+
+    return buildPdf(docDef);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // ACTIVIDADES → EXCEL
+  // ══════════════════════════════════════════════════════════
+  async generateActivitiesExcel(
+    user: User,
+    filters: { dateFrom?: string; dateTo?: string; status?: string; userId?: string; nodoId?: string },
+  ): Promise<Buffer> {
+    const records = await this.fetchActivities(user, filters);
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'NodoSys · IU Digital';
+    wb.created = new Date();
+
+    const ws = wb.addWorksheet('Actividades');
+
+    ws.mergeCells('A1:J1');
+    const tc = ws.getCell('A1');
+    tc.value = 'REPORTE DE ACTIVIDADES Y VIÁTICOS  ·  IU DIGITAL';
+    tc.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
+    tc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF6B2B' } };
+    tc.alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getRow(1).height = 28;
+
+    ws.mergeCells('A2:J2');
+    const sc = ws.getCell('A2');
+    const subtitle = [
+      filters.dateFrom ? `Desde: ${filters.dateFrom}` : null,
+      filters.dateTo   ? `Hasta: ${filters.dateTo}`   : null,
+      filters.status   ? `Estado: ${this.STATUS_LABELS_ACT[filters.status] ?? filters.status}` : null,
+    ].filter(Boolean).join('  ·  ') || 'Todos los registros';
+    sc.value = `${subtitle}  ·  Generado: ${new Date().toLocaleDateString('es-CO', { dateStyle: 'full' })}`;
+    sc.font = { italic: true, size: 9, color: { argb: 'FF888888' } };
+    sc.alignment = { horizontal: 'center' };
+
+    const headers = ['Código', 'Título', 'Docente', 'Fecha', 'Municipio', 'Estrategia', 'Participantes', 'Total COP', 'Estado', 'Tipo Pago'];
+    const hr = ws.getRow(4);
+    headers.forEach((h, i) => {
+      const c = hr.getCell(i + 1);
+      c.value = h;
+      c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF222222' } };
+      c.alignment = { horizontal: 'center', vertical: 'middle' };
+      c.border = { bottom: { style: 'medium', color: { argb: 'FFFF6B2B' } } };
+    });
+    ws.getRow(4).height = 22;
+
+    const statusColors: Record<string, string> = {
+      aprobada: 'FFD4EDDA', cerrada: 'FFE9ECEF', rechazada: 'FFF8D7DA',
+      en_ejecucion: 'FFCCE5FF', ejecutada: 'FFE2D9F3',
+    };
+
+    let excelRow = 5;
+    records.forEach(r => {
+      const row = ws.getRow(excelRow++);
+      const total = (r as any).totalEstimated ?? 0;
+      row.values = [
+        r.activityCode ?? '—',
+        r.title,
+        (r as any).user?.name ?? '—',
+        r.activityDate ? new Date(r.activityDate).toLocaleDateString('es-CO') : '—',
+        (r as any).municipality?.name ?? '—',
+        (r as any).strategy?.name ?? '—',
+        r.estimatedParticipants ?? 0,
+        total ? new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(total) : '—',
+        this.STATUS_LABELS_ACT[r.status] ?? r.status,
+        r.paymentType ?? '—',
+      ];
+      const bg = statusColors[r.status] ?? 'FFF9F9F9';
+      row.eachCell(c => {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+        c.font = { size: 10 };
+        c.alignment = { vertical: 'middle', wrapText: true };
+        c.border = { bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } } };
+      });
+      row.height = 18;
+    });
+
+    [14, 45, 28, 14, 20, 24, 14, 18, 14, 14].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+    const buf = await wb.xlsx.writeBuffer();
+    return Buffer.from(buf);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // USUARIOS → helpers internos
+  // ══════════════════════════════════════════════════════════
+
+  private readonly ROLE_LABELS: Record<string, string> = {
+    admin:                 'Administrador',
+    vicerrector_extension: 'Vicerrector Extensión',
+    vicerrector_academico: 'Vicerrector Académico',
+    equipo_extension:      'Equipo Extensión',
+    decano:                'Decano',
+    coordinador:           'Coordinador',
+    enlace:                'Enlace de Nodo',
+    docente:               'Docente',
+    monitor:               'Monitor',
+    auxiliar:              'Auxiliar',
+  };
+
+  private async fetchUsers(
+    filters: { role?: string; nodoId?: string; facultyId?: string },
+  ): Promise<User[]> {
+    const where: FindOptionsWhere<User> = {};
+    if (filters.role)      (where as any).role      = filters.role;
+    if (filters.nodoId)    (where as any).nodoId    = filters.nodoId;
+    if (filters.facultyId) (where as any).facultyId = filters.facultyId;
+
+    return this.userRepo.find({
+      where,
+      order: { role: 'ASC', name: 'ASC' },
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // USUARIOS → PDF
+  // ══════════════════════════════════════════════════════════
+  async generateUsersPdf(
+    filters: { role?: string; nodoId?: string; facultyId?: string },
+  ): Promise<Buffer> {
+    const users = await this.fetchUsers(filters);
+
+    const tableBody: unknown[][] = [[
+      { text: 'Nombre',    style: 'th' },
+      { text: 'Email',     style: 'th' },
+      { text: 'Documento', style: 'th' },
+      { text: 'Rol',       style: 'th' },
+      { text: 'Facultad',  style: 'th' },
+      { text: 'Programa',  style: 'th' },
+      { text: 'Nodo',      style: 'th' },
+      { text: 'Activo',    style: 'th' },
+    ]];
+
+    users.forEach(u => {
+      tableBody.push([
+        { text: u.name, style: 'td' },
+        { text: u.email, style: 'tdMuted' },
+        { text: u.documentNumber ? `${u.documentType ?? ''} ${u.documentNumber}` : '—', style: 'tdMono' },
+        { text: this.ROLE_LABELS[u.role] ?? u.role, style: 'td', color: u.role === 'admin' ? '#F87171' : '#DDDDDD' },
+        { text: u.faculty ?? '—', style: 'tdMuted' },
+        { text: u.program ?? '—', style: 'tdMuted' },
+        { text: u.nodoName ?? '—', style: 'tdMuted' },
+        { text: u.isActive ? 'Sí' : 'No', style: 'td', color: u.isActive ? '#4ADE80' : '#F87171', alignment: 'center' },
+      ]);
+    });
+
+    if (users.length === 0) {
+      tableBody.push([{ text: 'Sin registros para los filtros seleccionados.', colSpan: 8, style: 'tdMuted', alignment: 'center' }, ...Array(7).fill('')]);
+    }
+
+    const subtitle = [
+      filters.role      ? `Rol: ${this.ROLE_LABELS[filters.role] ?? filters.role}` : null,
+      filters.nodoId    ? `Nodo ID: ${filters.nodoId.slice(0, 8)}` : null,
+      filters.facultyId ? `Facultad ID: ${filters.facultyId.slice(0, 8)}` : null,
+    ].filter(Boolean).join('  ·  ') || 'Todos los usuarios';
+
+    const docDef = {
+      pageSize: 'LETTER',
+      pageMargins: [28, this.topMarginPt(612), 28, this.bottomMarginPt(612)],
+      header: this.makePdfHeader() ?? {
+        columns: [
+          { text: 'NodoSys · IU Digital · Reporte de Usuarios', fontSize: 7, color: '#555555', margin: [28, 14, 0, 0] },
+          { text: `Generado: ${new Date().toLocaleString('es-CO')}`, fontSize: 7, color: '#555555', alignment: 'right', margin: [0, 14, 28, 0] },
+        ],
+      },
+      footer: this.makePdfFooter() ?? ((page: number, pages: number) => ({
+        text: `Página ${page} de ${pages}  ·  Reporte de Usuarios · IU Digital`,
+        fontSize: 7, color: '#555555', alignment: 'center', margin: [0, 8, 0, 0],
+      })),
+      content: [
+        { text: 'REPORTE DE USUARIOS', style: 'title' },
+        { text: subtitle, style: 'subtitle' },
+        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 520, y2: 0, lineWidth: 2, lineColor: '#FF6B2B' }], margin: [0, 0, 0, 12] },
+        {
+          table: {
+            headerRows: 1,
+            widths: ['*', '*', 62, 82, 70, 70, 60, 28],
+            body: tableBody,
+          },
+          layout: {
+            fillColor: (row: number) => row === 0 ? '#222222' : row % 2 === 0 ? '#F9F9F9' : '#FFFFFF',
+            hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC',
+            hLineWidth: () => 0.4, vLineWidth: () => 0.4,
+            paddingTop: () => 3, paddingBottom: () => 3,
+          },
+        },
+        { text: `\nTotal: ${users.length} usuarios`, fontSize: 9, color: '#888888', margin: [0, 8, 0, 0] },
+      ],
+      styles: {
+        title:   { fontSize: 16, bold: true, color: '#FFFFFF', margin: [0, 0, 0, 4] },
+        subtitle:{ fontSize: 9,  color: '#888888', margin: [0, 0, 0, 10] },
+        th:      { fontSize: 8, bold: true, color: '#FFFFFF', margin: [2, 3] },
+        td:      { fontSize: 8, color: '#222222', margin: [2, 2] },
+        tdMuted: { fontSize: 7, color: '#555555', margin: [2, 2] },
+        tdMono:  { fontSize: 7, color: '#333333', margin: [2, 2] },
+      },
+      defaultStyle: { font: 'Roboto', color: '#222222' },
+    };
+
+    return buildPdf(docDef);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // USUARIOS → EXCEL
+  // ══════════════════════════════════════════════════════════
+  async generateUsersExcel(
+    filters: { role?: string; nodoId?: string; facultyId?: string },
+  ): Promise<Buffer> {
+    const users = await this.fetchUsers(filters);
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'NodoSys · IU Digital';
+    wb.created = new Date();
+
+    const ws = wb.addWorksheet('Usuarios');
+
+    ws.mergeCells('A1:H1');
+    const tc = ws.getCell('A1');
+    tc.value = 'REPORTE DE USUARIOS  ·  IU DIGITAL';
+    tc.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
+    tc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF333333' } };
+    tc.alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getRow(1).height = 28;
+
+    ws.mergeCells('A2:H2');
+    const subtitle = [
+      filters.role ? `Rol: ${this.ROLE_LABELS[filters.role] ?? filters.role}` : null,
+    ].filter(Boolean).join('  ·  ') || 'Todos los usuarios';
+    const sc = ws.getCell('A2');
+    sc.value = `${subtitle}  ·  Generado: ${new Date().toLocaleDateString('es-CO', { dateStyle: 'full' })}`;
+    sc.font = { italic: true, size: 9, color: { argb: 'FF888888' } };
+    sc.alignment = { horizontal: 'center' };
+
+    const headers = ['Nombre', 'Email', 'Documento', 'Rol', 'Facultad', 'Programa', 'Nodo', 'Activo'];
+    const hr = ws.getRow(4);
+    headers.forEach((h, i) => {
+      const c = hr.getCell(i + 1);
+      c.value = h;
+      c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF333333' } };
+      c.alignment = { horizontal: 'center', vertical: 'middle' };
+      c.border = { bottom: { style: 'medium', color: { argb: 'FFFF6B2B' } } };
+    });
+    ws.getRow(4).height = 22;
+
+    const roleColors: Record<string, string> = {
+      admin: 'FFFCE8E8', vicerrector_extension: 'FFF3E8FC', vicerrector_academico: 'FFEEE8FC',
+      decano: 'FFE8F0FC', enlace: 'FFFFF3E8', docente: 'FFE8FCF0',
+    };
+
+    let excelRow = 5;
+    users.forEach(u => {
+      const row = ws.getRow(excelRow++);
+      row.values = [
+        u.name, u.email,
+        u.documentNumber ? `${u.documentType ?? ''} ${u.documentNumber}` : '—',
+        this.ROLE_LABELS[u.role] ?? u.role,
+        u.faculty ?? '—', u.program ?? '—', u.nodoName ?? '—',
+        u.isActive ? 'Sí' : 'No',
+      ];
+      const bg = roleColors[u.role] ?? 'FFF9F9F9';
+      row.eachCell(c => {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+        c.font = { size: 10 };
+        c.alignment = { vertical: 'middle', wrapText: true };
+        c.border = { bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } } };
+      });
+      // Colorear Activo
+      const activeCell = row.getCell(8);
+      activeCell.font = { size: 10, bold: true, color: { argb: u.isActive ? 'FF1A7C3E' : 'FF9C1717' } };
+      row.height = 18;
+    });
+
+    [32, 36, 20, 22, 26, 26, 24, 10].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
     const buf = await wb.xlsx.writeBuffer();
     return Buffer.from(buf);

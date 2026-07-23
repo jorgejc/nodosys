@@ -11,7 +11,9 @@ import {
   Users, Plus, Search, X, Save, Loader2, Shield,
   Eye, EyeOff, CheckCircle2, XCircle, Pencil, Info, Filter, MapPin,
 } from 'lucide-react';
+import ExportMenu from '@/components/ui/ExportMenu';
 import { usersService } from '@/services/users.service';
+import { catalogsService } from '@/services/catalogs.service';
 import { useAuth } from '@/hooks/useAuth';
 import { usePagination } from '@/components/ui/Pagination';
 import type { User } from '@/types';
@@ -68,16 +70,15 @@ const schema = z.object({
   role:           z.string().min(1,'Debes seleccionar un rol'),
   nodoId:         z.string().optional(),
   nodoName:       z.string().optional(),
-  faculty:        z.string().optional(),
-  program:        z.string().optional(),
+  facultyId:      z.string().optional(),
+  programId:      z.string().optional(),
   phone:          z.string().optional(),
-  position:       z.string().optional(),
 }).superRefine((d, ctx) => {
   const cfg = ROLE_CFG[d.role];
-  if (cfg?.reqFaculty && !d.faculty?.trim())
-    ctx.addIssue({ code:'custom', path:['faculty'], message:`La facultad es obligatoria para el rol ${cfg.label}` });
-  if (cfg?.reqProgram && !d.program?.trim())
-    ctx.addIssue({ code:'custom', path:['program'], message:`El programa es obligatorio para el rol ${cfg.label}` });
+  if (cfg?.reqFaculty && !d.facultyId?.trim())
+    ctx.addIssue({ code:'custom', path:['facultyId'], message:`La facultad es obligatoria para el rol ${cfg.label}` });
+  if (cfg?.reqProgram && !d.programId?.trim())
+    ctx.addIssue({ code:'custom', path:['programId'], message:`El programa es obligatorio para el rol ${cfg.label}` });
   if (NODO_ROLES.includes(d.role) && !d.nodoName?.trim())
     ctx.addIssue({ code:'custom', path:['nodoName'], message:'Debes asignar un nodo a este rol' });
 });
@@ -113,11 +114,9 @@ function RoleBadge({ role }: { role: string }) {
 
 // ── Modal crear/editar ────────────────────────────────────
 function UserModal({
-  user, faculties, programs, onClose,
+  user, onClose,
 }: {
   user: (FD & { id?: string }) | null;
-  faculties: string[];
-  programs: string[];
   onClose: () => void;
 }) {
   const qc = useQueryClient();
@@ -142,19 +141,25 @@ function UserModal({
       role:           user?.role           ?? 'docente',
       nodoId:         user?.nodoId         ?? '',
       nodoName:       user?.nodoName       ?? '',
-      faculty:        user?.faculty        ?? '',
-      program:        user?.program        ?? '',
+      facultyId:      user?.facultyId      ?? '',
+      programId:      user?.programId      ?? '',
       phone:          user?.phone          ?? '',
-      position:       user?.position       ?? '',
     },
   });
 
-  const selectedRole = watch('role');
-  const selectedDocType = watch('documentType');
-  const watchedNodoId   = watch('nodoId');
-  const watchedNodoName = watch('nodoName');
+  const selectedRole      = watch('role');
+  const selectedDocType   = watch('documentType');
+  const watchedNodoId     = watch('nodoId');
+  const watchedNodoName   = watch('nodoName');
+  const selectedFacultyId = watch('facultyId');
   const cfg = ROLE_CFG[selectedRole];
   const isNodoRole = NODO_ROLES.includes(selectedRole);
+
+  // Campos de facultad/programa según el rol seleccionado en el formulario
+  const FACULTY_ROLES = ['decano', 'coordinador', 'docente', 'enlace'];
+  const PROGRAM_ROLES = ['coordinador', 'docente', 'enlace'];
+  const showFaculty = FACULTY_ROLES.includes(selectedRole);
+  const showProgram = PROGRAM_ROLES.includes(selectedRole);
 
   // Carga nodos existentes cuando el rol lo requiere
   const nodosQuery = useQuery({
@@ -162,6 +167,21 @@ function UserModal({
     queryFn:  usersService.getNodos,
     enabled:  isNodoRole,
     staleTime: 5 * 60 * 1000,
+  });
+
+  // Catálogos de facultades y programas
+  const facultiesQ = useQuery({
+    queryKey: ['faculties'],
+    queryFn:  catalogsService.getFaculties,
+    staleTime: 10 * 60 * 1000,
+  });
+  const programsQ = useQuery({
+    queryKey: ['programs', selectedFacultyId],
+    queryFn:  () => selectedFacultyId
+      ? catalogsService.getProgramsByFaculty(selectedFacultyId)
+      : Promise.resolve([]),
+    enabled:  !!(showFaculty && selectedFacultyId),
+    staleTime: 10 * 60 * 1000,
   });
 
   const pickNodo = (nodoId: string, nodoName: string) => {
@@ -185,23 +205,26 @@ function UserModal({
       if (data.email)          payload.email          = data.email;
       if (data.password)       payload.password       = data.password;
       if (data.role)           payload.role           = data.role;
-      if (data.phone)          payload.phone          = data.phone;
-      if (data.position)       payload.position       = data.position;
+      if (data.phone) payload.phone = data.phone;
       // Nodo: solo para roles que lo requieren
       if (isNodoRole) {
         if (data.nodoId)   payload.nodoId   = data.nodoId;
         if (data.nodoName) payload.nodoName = data.nodoName;
       }
-      // Facultad/programa
-      if (cfg?.reqFaculty || isAdmin) {
-        if (data.faculty) payload.faculty = data.faculty;
+      // Facultad/programa según el rol seleccionado
+      if (showFaculty && data.facultyId) {
+        payload.facultyId = data.facultyId;
+        const fac = facultiesQ.data?.find(f => f.id === data.facultyId);
+        if (fac) payload.faculty = fac.name;
       }
-      if (cfg?.reqProgram || ['decano','coordinador','docente'].includes(selectedRole)) {
-        if (data.program) payload.program = data.program;
+      if (showProgram && data.programId) {
+        payload.programId = data.programId;
+        const prg = programsQ.data?.find(p => p.id === data.programId);
+        if (prg) payload.program = prg.name;
       }
 
       if (isEdit && user?.id) return usersService.update(user.id, payload);
-      return usersService.register(payload);
+      return usersService.create(payload);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); onClose(); },
     onError: (e: unknown) => {
@@ -388,52 +411,54 @@ function UserModal({
             </div>
           )}
 
-          {/* Facultad — obligatoria para decano/coordinador */}
-          {(cfg?.reqFaculty || cfg?.reqProgram || isAdmin) && (
+          {/* Facultad — SELECT del catálogo */}
+          {showFaculty && (
             <div>
               <label className={`${lbl} ${cfg?.reqFaculty ? 'text-white' : ''}`}>
                 Facultad {cfg?.reqFaculty ? '*' : <span className="text-[#444] normal-case">(opcional)</span>}
               </label>
-              <input {...register('faculty')} list="fac-list"
-                placeholder="Ingeniería y Ciencias Agropecuarias"
-                className={errors.faculty ? inpErr : inp}/>
-              <datalist id="fac-list">{faculties.map(f => <option key={f} value={f}/>)}</datalist>
-              {errors.faculty && (
+              <select {...register('facultyId')} className={errors.facultyId ? inpErr : inp}>
+                <option value="">— Selecciona una facultad —</option>
+                {(facultiesQ.data ?? []).map(f => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+              {errors.facultyId && (
                 <p className="text-red-400 text-xs mt-1 flex items-center gap-1">
-                  <Info size={10}/> {errors.faculty.message}
+                  <Info size={10}/> {errors.facultyId.message}
                 </p>
               )}
             </div>
           )}
 
-          {/* Programa — obligatorio para coordinador */}
-          {(cfg?.reqProgram || ['decano','coordinador','docente'].includes(selectedRole)) && (
+          {/* Programa — SELECT dependiente de la facultad */}
+          {showProgram && (
             <div>
               <label className={`${lbl} ${cfg?.reqProgram ? 'text-white' : ''}`}>
                 Programa {cfg?.reqProgram ? '*' : <span className="text-[#444] normal-case">(opcional)</span>}
               </label>
-              <input {...register('program')} list="prg-list"
-                placeholder="Tecnología en Desarrollo de Software"
-                className={errors.program ? inpErr : inp}/>
-              <datalist id="prg-list">{programs.map(p => <option key={p} value={p}/>)}</datalist>
-              {errors.program && (
+              <select {...register('programId')}
+                className={errors.programId ? inpErr : inp}
+                disabled={!selectedFacultyId}>
+                <option value="">
+                  {selectedFacultyId ? '— Selecciona un programa —' : '— Primero selecciona una facultad —'}
+                </option>
+                {(programsQ.data ?? []).map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              {errors.programId && (
                 <p className="text-red-400 text-xs mt-1 flex items-center gap-1">
-                  <Info size={10}/> {errors.program.message}
+                  <Info size={10}/> {errors.programId.message}
                 </p>
               )}
             </div>
           )}
 
-          {/* Teléfono y cargo */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={lbl}>Teléfono</label>
-              <input {...register('phone')} placeholder="3001234567" className={inp}/>
-            </div>
-            <div>
-              <label className={lbl}>Cargo</label>
-              <input {...register('position')} placeholder="Docente Ocasional TC" className={inp}/>
-            </div>
+          {/* Teléfono */}
+          <div>
+            <label className={lbl}>Teléfono</label>
+            <input {...register('phone')} placeholder="3001234567" className={inp}/>
           </div>
 
           <div className="flex justify-end gap-3 pt-2 border-t border-[#1E1E1E]">
@@ -473,8 +498,13 @@ export default function UsersPage() {
   });
 
   const users = (q.data ?? []) as User[];
-  const faculties = [...new Set(users.map(u => u.faculty).filter(Boolean) as string[])].sort();
-  const programs  = [...new Set(users.map(u => u.program).filter(Boolean) as string[])].sort();
+
+  // Facultades del catálogo para el filtro de búsqueda
+  const facultiesQ = useQuery({
+    queryKey: ['faculties'],
+    queryFn:  catalogsService.getFaculties,
+    staleTime: 10 * 60 * 1000,
+  });
 
   const toggleActive = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
@@ -494,12 +524,22 @@ export default function UsersPage() {
           <h1 className="text-2xl font-bold text-white">Usuarios del Sistema</h1>
           <p className="text-[#666] text-sm mt-1">{users.length} usuario{users.length !== 1 ? 's' : ''}</p>
         </div>
-        {canCreateUsers && (
-          <button onClick={() => setModal(null)}
-            className="flex items-center gap-2 bg-[#FF6B2B] hover:bg-[#e55c20] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
-            <Plus size={16}/> Nuevo usuario
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <ExportMenu
+              pdfUrl="/reports/users/pdf"
+              excelUrl="/reports/users/excel"
+              params={{ role: roleF || undefined }}
+              label="Exportar"
+            />
+          )}
+          {canCreateUsers && (
+            <button onClick={() => setModal(null)}
+              className="flex items-center gap-2 bg-[#FF6B2B] hover:bg-[#e55c20] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
+              <Plus size={16}/> Nuevo usuario
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filtros */}
@@ -520,7 +560,9 @@ export default function UsersPage() {
             onChange={e => setFacF(e.target.value)} list="fac-filter"
             className="bg-[#111] border border-[#2A2A2A] rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#555] outline-none focus:border-[#FF6B2B] min-w-[190px]"/>
         )}
-        <datalist id="fac-filter">{faculties.map(f => <option key={f} value={f}/>)}</datalist>
+        <datalist id="fac-filter">
+          {(facultiesQ.data ?? []).map(f => <option key={f.id} value={f.name}/>)}
+        </datalist>
         {hasFilters && (
           <button onClick={() => { setSearch(''); setRoleF(''); setFacF(''); }}
             className="flex items-center gap-1 text-xs text-[#FF6B2B] hover:text-white px-3">
@@ -613,12 +655,11 @@ export default function UsersPage() {
                                   documentNumber: u.documentNumber ?? '',
                                   email:          u.email,
                                   role:           u.role,
-                                  nodoId:         u.nodoId   ?? '',
-                                  nodoName:       u.nodoName ?? '',
-                                  faculty:        u.faculty  ?? '',
-                                  program:        u.program  ?? '',
-                                  phone:          u.phone    ?? '',
-                                  position:       u.position ?? '',
+                                  nodoId:         u.nodoId    ?? '',
+                                  nodoName:       u.nodoName  ?? '',
+                                  facultyId:      u.facultyId ?? '',
+                                  programId:      u.programId ?? '',
+                                  phone:          u.phone     ?? '',
                                   password:       '',
                                 })}
                                 className="p-1.5 text-[#555] hover:text-[#FF6B2B] hover:bg-[#FF6B2B]/10 rounded transition-colors"
@@ -654,8 +695,6 @@ export default function UsersPage() {
       {modal !== false && (
         <UserModal
           user={modal}
-          faculties={faculties}
-          programs={programs}
           onClose={() => setModal(false)}
         />
       )}

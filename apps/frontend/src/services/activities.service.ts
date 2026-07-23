@@ -2,8 +2,11 @@ import api from './api';
 
 export const activitiesService = {
   // Solicitudes
-  getAll: (params?: { status?: string; userId?: string }) =>
+  getAll: (params?: { status?: string; userId?: string; processId?: string; sessionId?: string; nodoId?: string }) =>
     api.get('/activities', { params }).then(r => r.data),
+
+  getLastForProcess: (processId: string) =>
+    api.get<Record<string, unknown> | null>(`/activities/last-for-process/${processId}`).then(r => r.data),
 
   getById: (id: string) =>
     api.get(`/activities/${id}`).then(r => r.data),

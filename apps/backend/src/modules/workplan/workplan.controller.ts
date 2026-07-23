@@ -35,6 +35,12 @@ export class WorkPlanController {
     return this.svc.create(dto, user);
   }
 
+  @Get('my-tasks')
+  @ApiOperation({ summary: 'Tareas del plan propio (para selector de procesos)' })
+  findMyTasks(@CurrentUser() user: User) {
+    return this.svc.findMyTasks(user);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Detalle del plan con ejes y actividades' })
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
@@ -61,6 +67,12 @@ export class WorkPlanController {
   @ApiOperation({ summary: 'Resumen de horas por eje misional' })
   getAxesSummary(@Param('id', ParseUUIDPipe) id: string) {
     return this.svc.getAxisSummaries(id);
+  }
+
+  @Get(':id/linked-processes')
+  @ApiOperation({ summary: 'Mapa taskId → procesos vinculados (para mostrar bitácora desde el plan)' })
+  getLinkedProcesses(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+    return this.svc.findLinkedProcessesByPlan(id, user);
   }
 
   // ── Ejes ─────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, Save, Trash2, Loader2, AlertTriangle } from 'lucide-react';
 import { inventoryItemService, inventoryCategoryService } from '@/services/inventory.service';
+import type { LocationType } from '@/types';
 
 interface Props {
   itemId: string;
@@ -22,6 +23,8 @@ export default function EditInventoryItemModal({ itemId, onClose }: Props) {
   const [form, setForm] = useState({
     name: '', brand: '', model: '', description: '',
     categoryId: '', trackByUnit: true, notes: '', imageUrl: '',
+    locationType: '' as LocationType | '',
+    cabinetNumber: '', shelfNumber: '', locationNote: '',
   });
 
   // Cargar datos del ítem
@@ -33,6 +36,12 @@ export default function EditInventoryItemModal({ itemId, onClose }: Props) {
   const categoriesQuery = useQuery({
     queryKey: ['inventory-categories'],
     queryFn: () => inventoryCategoryService.getAll(),
+  });
+
+  const cabinetNumbersQuery = useQuery({
+    queryKey: ['cabinet-numbers', itemQuery.data?.nodoId],
+    queryFn: () => inventoryItemService.getCabinetNumbers(itemQuery.data?.nodoId ?? undefined),
+    enabled: form.locationType === 'gabinete',
   });
 
   useEffect(() => {
@@ -47,6 +56,10 @@ export default function EditInventoryItemModal({ itemId, onClose }: Props) {
         trackByUnit: item.trackByUnit ?? true,
         notes: item.notes ?? '',
         imageUrl: item.imageUrl ?? '',
+        locationType:  (item.locationType ?? '') as LocationType | '',
+        cabinetNumber: item.cabinetNumber ?? '',
+        shelfNumber:   item.shelfNumber ?? '',
+        locationNote:  item.locationNote ?? '',
       });
     }
   }, [itemQuery.data]);
@@ -61,6 +74,10 @@ export default function EditInventoryItemModal({ itemId, onClose }: Props) {
       trackByUnit: form.trackByUnit,
       notes: form.notes || null,
       imageUrl: form.imageUrl || null,
+      locationType:  (form.locationType as LocationType) || null,
+      cabinetNumber: form.locationType === 'gabinete'          ? (form.cabinetNumber || null) : null,
+      shelfNumber:   form.locationType === 'gabinete'          ? (form.shelfNumber   || null) : null,
+      locationNote:  form.locationType === 'mobiliario_suelto' ? (form.locationNote  || null) : null,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inventory-items'] });
@@ -170,6 +187,43 @@ export default function EditInventoryItemModal({ itemId, onClose }: Props) {
                 <label className={lbl}>Observaciones</label>
                 <textarea value={form.notes} onChange={e => F('notes', e.target.value)}
                   rows={2} className={`${inp} resize-none`} placeholder="Observaciones..." />
+              </div>
+
+              {/* Ubicación */}
+              <div className="border-t border-[#2A2A2A] pt-3 space-y-3">
+                <p className="text-xs font-mono text-[#555] uppercase tracking-widest">// Ubicación física</p>
+                <div>
+                  <label className={lbl}>Tipo de ubicación</label>
+                  <select value={form.locationType} onChange={e => F('locationType', e.target.value as LocationType | '')} className={inp}>
+                    <option value="">Sin especificar</option>
+                    <option value="gabinete">Gabinete / Entrepaño</option>
+                    <option value="mobiliario_suelto">Mobiliario suelto</option>
+                  </select>
+                </div>
+                {form.locationType === 'gabinete' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={lbl}>N.° Gabinete</label>
+                      <input value={form.cabinetNumber} onChange={e => F('cabinetNumber', e.target.value)}
+                        list="edit-cabinet-list" placeholder="Ej: 3" className={inp} />
+                      <datalist id="edit-cabinet-list">
+                        {(cabinetNumbersQuery.data ?? []).map(n => <option key={n} value={n} />)}
+                      </datalist>
+                    </div>
+                    <div>
+                      <label className={lbl}>N.° Entrepaño</label>
+                      <input value={form.shelfNumber} onChange={e => F('shelfNumber', e.target.value)}
+                        placeholder="Ej: 2" className={inp} />
+                    </div>
+                  </div>
+                )}
+                {form.locationType === 'mobiliario_suelto' && (
+                  <div>
+                    <label className={lbl}>Nota de ubicación</label>
+                    <input value={form.locationNote} onChange={e => F('locationNote', e.target.value)}
+                      placeholder="Ej: Junto a la puerta principal" maxLength={300} className={inp} />
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-3 p-3 bg-[#1A1A1A] rounded-lg border border-[#2A2A2A]">

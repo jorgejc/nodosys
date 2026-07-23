@@ -1,14 +1,5 @@
 /**
  * activities.service.ts — Lógica del módulo de actividades y viáticos
- *
- * Gestiona el ciclo completo:
- *  1. El docente crea la solicitud con los viáticos estimados
- *  2. La envía (pendiente)
- *  3. El admin/decano aprueba o rechaza
- *  4. Al aprobar → genera código ACT-YYYY-NNN
- *  5. El docente ejecuta la actividad y registra gastos reales
- *  6. Sube evidencias (fotos, facturas, participantes)
- *  7. El sistema genera el reporte completo
  */
 import {
   Injectable, NotFoundException,
@@ -20,6 +11,7 @@ import { ActivityRequest, RequestStatus } from './entities/activity-request.enti
 import { ActivityExpense } from './entities/activity-expense.entity';
 import { ActivityParticipant } from './entities/activity-participant.entity';
 import { ActivityEvidence } from './entities/activity-evidence.entity';
+import { CourseSession } from '../sessions/entities/course-session.entity';
 import { User, UserRole } from '../users/entities/user.entity';
 import {
   CreateActivityRequestDto, UpdateActivityRequestDto,
@@ -38,30 +30,19 @@ export class ActivitiesService {
     private readonly participantRepo: Repository<ActivityParticipant>,
     @InjectRepository(ActivityEvidence)
     private readonly evidenceRepo: Repository<ActivityEvidence>,
+    @InjectRepository(CourseSession)
+    private readonly sessionRepo: Repository<CourseSession>,
     private readonly dataSource: DataSource,
   ) {}
 
-  // Roles que ven TODAS las actividades (sin filtro de nodo)
+  // Solo admin y vicerrector_extension ven/revisan TODAS las actividades
   private readonly GLOBAL_REVIEWERS: UserRole[] = [
-    UserRole.ADMIN, UserRole.VICERRECTOR_EXTENSION, UserRole.EQUIPO_EXTENSION,
-    UserRole.DECANO, UserRole.COORDINADOR,
+    UserRole.ADMIN, UserRole.VICERRECTOR_EXTENSION,
   ];
 
-  // Roles que gestionan actividades dentro de su nodo
-  private readonly NODO_ROLES: UserRole[] = [
-    UserRole.ENLACE, UserRole.MONITOR, UserRole.AUXILIAR,
-  ];
-
-  // ── ¿Puede el usuario ver esta solicitud? ─────────────────
-  // Requiere que request.user esté cargado para verificar nodo.
   private canView(request: ActivityRequest, user: User): boolean {
     if (this.GLOBAL_REVIEWERS.includes(user.role)) return true;
-    if (request.userId === user.id) return true;
-    // ENLACE/MONITOR/AUXILIAR ven actividades de usuarios de su nodo
-    if (this.NODO_ROLES.includes(user.role)) {
-      return !!user.nodoId && request.user?.nodoId === user.nodoId;
-    }
-    return false;
+    return request.userId === user.id;
   }
 
   private canEdit(request: ActivityRequest, user: User): boolean {
@@ -77,25 +58,33 @@ export class ActivitiesService {
   // SOLICITUDES
   // ══════════════════════════════════════════════════════════
 
-  async findAll(user: User, filters?: { status?: string; userId?: string }): Promise<ActivityRequest[]> {
+  async findAll(
+    user: User,
+    filters?: { status?: string; userId?: string; processId?: string; sessionId?: string; nodoId?: string },
+  ): Promise<ActivityRequest[]> {
     const qb = this.requestRepo
       .createQueryBuilder('r')
       .leftJoinAndSelect('r.user', 'u')
+      .leftJoinAndSelect('r.strategy', 'strategy')
+      .leftJoinAndSelect('r.municipality', 'municipality')
       .orderBy('r.activity_date', 'DESC');
 
-    if (this.isReviewer(user)) {
-      // Roles globales: ven todas las actividades
-    } else if (this.NODO_ROLES.includes(user.role) && user.nodoId) {
-      // ENLACE/MONITOR/AUXILIAR: solo actividades de usuarios de su nodo
-      qb.where('u.nodo_id = :nodoId', { nodoId: user.nodoId });
-    } else {
-      // DOCENTE u otros sin nodo: solo las propias
+    if (!this.isReviewer(user)) {
       qb.where('r.user_id = :uid', { uid: user.id });
     }
 
     if (filters?.status) qb.andWhere('r.status = :status', { status: filters.status });
     if (filters?.userId && this.isReviewer(user)) {
       qb.andWhere('r.user_id = :userId', { userId: filters.userId });
+    }
+    if (filters?.nodoId && this.isReviewer(user)) {
+      qb.andWhere('u.nodo_id = :nodoId', { nodoId: filters.nodoId });
+    }
+    if (filters?.processId) {
+      qb.andWhere('r.process_id = :processId', { processId: filters.processId });
+    }
+    if (filters?.sessionId) {
+      qb.andWhere('r.session_id = :sessionId', { sessionId: filters.sessionId });
     }
 
     return qb.getMany();
@@ -104,13 +93,11 @@ export class ActivitiesService {
   async findOne(id: string, user: User): Promise<ActivityRequest> {
     const request = await this.requestRepo.findOne({
       where: { id },
-      relations: ['user', 'expenses', 'participants', 'evidence'],
+      relations: ['user', 'expenses', 'participants', 'evidence', 'strategy', 'municipality'],
     });
     if (!request) throw new NotFoundException('Solicitud no encontrada');
     if (!this.canView(request, user)) throw new ForbiddenException('Sin permiso para ver esta solicitud');
 
-    // Ordenar las subcolecciones en la aplicación — TypeORM no soporta
-    // order por relaciones OneToMany en findOne sin JOIN explícito.
     if (request.expenses)
       request.expenses.sort((a, b) => (a.expenseDate > b.expenseDate ? 1 : -1));
     if (request.participants)
@@ -121,6 +108,21 @@ export class ActivitiesService {
     return request;
   }
 
+  // Retorna la última actividad creada para un proceso (para precarga "Usar datos anteriores")
+  async getLastForProcess(processId: string, user: User): Promise<ActivityRequest | null> {
+    const qb = this.requestRepo
+      .createQueryBuilder('r')
+      .where('r.process_id = :processId', { processId })
+      .orderBy('r.created_at', 'DESC')
+      .limit(1);
+
+    if (!this.isReviewer(user)) {
+      qb.andWhere('r.user_id = :uid', { uid: user.id });
+    }
+
+    return qb.getOne();
+  }
+
   async create(dto: CreateActivityRequestDto, user: User): Promise<ActivityRequest> {
     const total = (dto.requiresFood ? (dto.foodAmount ?? 0) : 0)
       + (dto.requiresTransport ? (dto.transportAmount ?? 0) : 0)
@@ -128,30 +130,44 @@ export class ActivitiesService {
       + (dto.requiresMaterials ? (dto.materialsAmount ?? 0) : 0)
       + (dto.requiresOther ? (dto.otherAmount ?? 0) : 0);
 
+    // Si viene con session_id, heredar process_id de esa sesión
+    let resolvedProcessId: string | null = null;
+    if (dto.sessionId) {
+      const session = await this.sessionRepo.findOne({ where: { id: dto.sessionId } });
+      resolvedProcessId = session?.processId ?? null;
+    }
+
     const request = this.requestRepo.create({
-      userId: user.id,
-      title: dto.title,
-      description: dto.description ?? null,
-      activityDate: new Date(dto.activityDate),
-      endDate: dto.endDate ? new Date(dto.endDate) : null,
-      location: dto.location ?? null,
-      expectedParticipants: dto.expectedParticipants ?? 0,
-      axisActivityId: dto.axisActivityId ?? null,
-      requiresFood: dto.requiresFood ?? false,
-      foodAmount: dto.requiresFood ? (dto.foodAmount ?? 0) : 0,
-      requiresTransport: dto.requiresTransport ?? false,
-      transportAmount: dto.requiresTransport ? (dto.transportAmount ?? 0) : 0,
+      userId:              user.id,
+      title:               dto.title,
+      description:         dto.description ?? null,
+      activityDate:        new Date(dto.activityDate),
+      endDate:             dto.endDate ? new Date(dto.endDate) : null,
+      location:            dto.location ?? null,
+      estimatedParticipants: dto.estimatedParticipants ?? 0,
+      axisActivityId:      dto.axisActivityId ?? null,
+      sessionId:           dto.sessionId ?? null,
+      processId:           resolvedProcessId,
+      strategyId:          dto.strategyId ?? null,
+      municipalityId:      dto.municipalityId ?? null,
+      resourceDetail:      dto.resourceDetail ?? null,
+      paymentType:         dto.paymentType ?? null,
+      hasElectronicInvoiceProvider: dto.hasElectronicInvoiceProvider ?? false,
+      requiresFood:         dto.requiresFood ?? false,
+      foodAmount:           dto.requiresFood ? (dto.foodAmount ?? 0) : 0,
+      requiresTransport:    dto.requiresTransport ?? false,
+      transportAmount:      dto.requiresTransport ? (dto.transportAmount ?? 0) : 0,
       requiresAccommodation: dto.requiresAccommodation ?? false,
-      accommodationAmount: dto.requiresAccommodation ? (dto.accommodationAmount ?? 0) : 0,
-      requiresMaterials: dto.requiresMaterials ?? false,
-      materialsAmount: dto.requiresMaterials ? (dto.materialsAmount ?? 0) : 0,
-      requiresOther: dto.requiresOther ?? false,
-      otherDescription: dto.otherDescription ?? null,
-      otherAmount: dto.requiresOther ? (dto.otherAmount ?? 0) : 0,
-      requiresAdvance: dto.requiresAdvance ?? false,
-      advanceAmount: dto.requiresAdvance ? (dto.advanceAmount ?? 0) : 0,
-      totalEstimated: total,
-      status: RequestStatus.BORRADOR,
+      accommodationAmount:  dto.requiresAccommodation ? (dto.accommodationAmount ?? 0) : 0,
+      requiresMaterials:    dto.requiresMaterials ?? false,
+      materialsAmount:      dto.requiresMaterials ? (dto.materialsAmount ?? 0) : 0,
+      requiresOther:        dto.requiresOther ?? false,
+      otherDescription:     dto.otherDescription ?? null,
+      otherAmount:          dto.requiresOther ? (dto.otherAmount ?? 0) : 0,
+      requiresAdvance:      dto.requiresAdvance ?? false,
+      advanceAmount:        dto.requiresAdvance ? (dto.advanceAmount ?? 0) : 0,
+      totalEstimated:       total,
+      status:               RequestStatus.BORRADOR,
     });
     return this.requestRepo.save(request);
   }
@@ -165,7 +181,6 @@ export class ActivitiesService {
     return this.requestRepo.save(request);
   }
 
-  // Enviar para revisión (borrador → pendiente)
   async submit(id: string, user: User): Promise<ActivityRequest> {
     const request = await this.findOne(id, user);
     if (request.userId !== user.id) throw new ForbiddenException('Solo el autor puede enviar la solicitud');
@@ -176,9 +191,8 @@ export class ActivitiesService {
     return this.requestRepo.save(request);
   }
 
-  // Aprobar o rechazar (admin/decano)
   async review(id: string, dto: ReviewActivityDto, reviewer: User): Promise<ActivityRequest> {
-    if (!this.isReviewer(reviewer)) throw new ForbiddenException('Solo administradores o decanos pueden revisar solicitudes');
+    if (!this.isReviewer(reviewer)) throw new ForbiddenException('Solo el administrador o el vicerrector de extensión pueden revisar solicitudes');
 
     const request = await this.findOne(id, reviewer);
     if (request.status !== RequestStatus.PENDIENTE) {
@@ -188,13 +202,12 @@ export class ActivitiesService {
       throw new BadRequestException('Debes indicar el motivo del rechazo');
     }
 
-    request.status     = dto.decision === 'aprobada' ? RequestStatus.APROBADA : RequestStatus.RECHAZADA;
-    request.reviewedBy = reviewer.id;
-    request.reviewedAt = new Date();
-    request.reviewerNotes  = dto.reviewerNotes ?? null;
+    request.status          = dto.decision === 'aprobada' ? RequestStatus.APROBADA : RequestStatus.RECHAZADA;
+    request.reviewedBy      = reviewer.id;
+    request.reviewedAt      = new Date();
+    request.reviewerNotes   = dto.reviewerNotes ?? null;
     request.rejectionReason = dto.rejectionReason ?? null;
 
-    // Generar código al aprobar
     if (dto.decision === 'aprobada') {
       const result = await this.dataSource.query('SELECT generate_activity_code() AS code');
       request.activityCode = result[0]?.code ?? `ACT-${Date.now()}`;
@@ -203,7 +216,6 @@ export class ActivitiesService {
     return this.requestRepo.save(request);
   }
 
-  // Marcar como ejecutada
   async markExecuted(id: string, user: User): Promise<ActivityRequest> {
     const request = await this.findOne(id, user);
     if (request.userId !== user.id && !this.isReviewer(user)) throw new ForbiddenException('Sin permiso');
@@ -225,7 +237,6 @@ export class ActivitiesService {
       throw new BadRequestException('Solo puedes registrar gastos en solicitudes aprobadas');
     }
 
-    // Cambiar a en_ejecucion si estaba solo aprobada
     if (request.status === RequestStatus.APROBADA) {
       request.status = RequestStatus.EN_EJECUCION;
       await this.requestRepo.save(request);
@@ -234,21 +245,18 @@ export class ActivitiesService {
     const expense = this.expenseRepo.create({
       requestId,
       registeredBy: user.id,
-      expenseDate: new Date(dto.expenseDate),
-      category: dto.category,
-      description: dto.description ?? null,
-      amount: dto.amount,
-      receiptUrl: dto.receiptUrl ?? null,
+      expenseDate:  new Date(dto.expenseDate),
+      category:     dto.category,
+      description:  dto.description ?? null,
+      amount:       dto.amount,
+      receiptUrl:   dto.receiptUrl ?? null,
     });
     return this.expenseRepo.save(expense);
   }
 
   async getExpenses(requestId: string, user: User): Promise<ActivityExpense[]> {
-    await this.findOne(requestId, user); // verifica acceso
-    return this.expenseRepo.find({
-      where: { requestId },
-      order: { expenseDate: 'ASC' },
-    });
+    await this.findOne(requestId, user);
+    return this.expenseRepo.find({ where: { requestId }, order: { expenseDate: 'ASC' } });
   }
 
   async deleteExpense(expenseId: string, user: User): Promise<void> {
@@ -288,12 +296,12 @@ export class ActivitiesService {
     await this.findOne(requestId, user);
     const evidence = this.evidenceRepo.create({
       requestId,
-      uploadedBy: user.id,
+      uploadedBy:   user.id,
       evidenceType: dto.evidenceType,
-      storageUrl: dto.storageUrl,
-      fileName: dto.fileName ?? null,
-      caption: dto.caption ?? null,
-      fileSizeKb: dto.fileSizeKb ?? null,
+      storageUrl:   dto.storageUrl,
+      fileName:     dto.fileName ?? null,
+      caption:      dto.caption ?? null,
+      fileSizeKb:   dto.fileSizeKb ?? null,
     });
     return this.evidenceRepo.save(evidence);
   }
@@ -310,7 +318,6 @@ export class ActivitiesService {
     await this.evidenceRepo.remove(ev);
   }
 
-  // ── Resumen de gastos de una solicitud ────────────────────
   async getExpenseSummary(requestId: string, user: User): Promise<object> {
     await this.findOne(requestId, user);
     const result = await this.dataSource.query(

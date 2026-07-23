@@ -8,12 +8,12 @@
  *  - Consultas de resumen (cuántos hay, en qué estado, dónde están)
  */
 import {
-  Injectable, NotFoundException, BadRequestException,
+  Injectable, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { InventoryCategory } from './entities/inventory-category.entity';
-import { InventoryItem } from './entities/inventory-item.entity';
+import { InventoryItem, LocationType } from './entities/inventory-item.entity';
 import { InventoryUnit, UnitCondition, UnitStatus } from './entities/inventory-unit.entity';
 import { InventoryMovement, MovementType } from './entities/inventory-movement.entity';
 import {
@@ -38,6 +38,23 @@ export class InventoryService {
     @InjectRepository(InventoryMovement)
     private readonly movementRepo: Repository<InventoryMovement>,
   ) {}
+
+  // Roles que ven inventario de todos los nodos (sin restricción de nodo).
+  private readonly INV_GLOBAL_ROLES = ['admin', 'vicerrector_extension'];
+
+  // SEGURIDAD: valida que un rol de nodo solo acceda a inventario de su propio
+  // nodo. Para llamadas internas (sin `user`) no valida, porque el método
+  // público que originó la llamada ya aplicó su propio control de acceso.
+  private assertNodeReadAccess(itemNodoId: string | null | undefined, user?: User): void {
+    if (!user) return;
+    if (this.INV_GLOBAL_ROLES.includes(user.role)) return;
+    if (!user.nodoId) {
+      throw new ForbiddenException('Tu usuario no tiene un nodo asignado');
+    }
+    if (itemNodoId !== user.nodoId) {
+      throw new ForbiddenException('No tienes acceso a inventario de otro nodo');
+    }
+  }
 
   // ══════════════════════════════════════════════════════════
   // CATEGORÍAS
@@ -82,21 +99,16 @@ export class InventoryService {
   filters: { nodoId?: string; categoryId?: string; search?: string },
   user?: User,
 ): Promise<InventoryItem[]> {
-  // ── Filtro por nodo según rol ──────────────────────────
-  const globalRoles = [
-    'admin', 'vicerrector_extension', 'vicerrector_academico',
-    'equipo_extension', 'decano', 'coordinador',
-  ];
-  if (user && !globalRoles.includes(user.role)) {
+  // admin y vicerrector_extension no tienen filtro de nodo.
+  // enlace ve solo su propio nodo (el controller ya bloqueó otros roles).
+  const noFilter = ['admin', 'vicerrector_extension'];
+  if (user && !noFilter.includes(user.role)) {
     if (user.nodoId) {
-      // Enlace/docente/monitor/auxiliar — solo ve su nodo
       filters.nodoId = user.nodoId;
     } else {
-      // Sin nodo asignado — no ve ningún inventario
       return [];
     }
   }
-  // globalRoles sin filtro → ven todos los nodos
 
   // ── Query ──────────────────────────────────────────────
   const qb = this.itemRepo
@@ -142,13 +154,14 @@ export class InventoryService {
   });
 }
 
-  async getItemById(id: string): Promise<InventoryItem> {
+  async getItemById(id: string, user?: User): Promise<InventoryItem> {
     const item = await this.itemRepo.findOne({
       where: { id, deletedAt: IsNull() },
       relations: ['category', 'units'],
       order: { units: { createdAt: 'ASC' } } as never,
     });
     if (!item) throw new NotFoundException(`Ítem ${id} no encontrado`);
+    this.assertNodeReadAccess(item.nodoId, user);
     return item;
   }
 
@@ -171,19 +184,40 @@ export class InventoryService {
       trackByUnit: dto.trackByUnit ?? true,
       nodoId: dto.nodoId ?? null,
       registeredBy: userId,
+      locationType:  (dto.locationType as LocationType) ?? null,
+      cabinetNumber: dto.cabinetNumber ?? null,
+      shelfNumber:   dto.shelfNumber ?? null,
+      locationNote:  dto.locationNote ?? null,
     });
 
     return this.itemRepo.save(item);
   }
 
-  async updateItem(id: string, dto: UpdateInventoryItemDto): Promise<InventoryItem> {
+  async getCabinetNumbers(nodoId?: string): Promise<string[]> {
+    const qb = this.itemRepo
+      .createQueryBuilder('item')
+      .select('DISTINCT item.cabinet_number', 'cabinet_number')
+      .where('item.deleted_at IS NULL')
+      .andWhere('item.cabinet_number IS NOT NULL');
+    if (nodoId) qb.andWhere('item.nodo_id = :nodoId', { nodoId });
+    const rows = await qb.getRawMany<{ cabinet_number: string }>();
+    return rows.map(r => r.cabinet_number).sort();
+  }
+
+  async updateItem(id: string, dto: UpdateInventoryItemDto, user?: User): Promise<InventoryItem> {
     const item = await this.getItemById(id);
+    if (user?.role === 'enlace' && item.nodoId !== user.nodoId) {
+      throw new ForbiddenException('Solo puedes editar ítems de tu nodo');
+    }
     Object.assign(item, dto);
     return this.itemRepo.save(item);
   }
 
-  async deleteItem(id: string): Promise<void> {
+  async deleteItem(id: string, user?: User): Promise<void> {
     const item = await this.getItemById(id);
+    if (user?.role === 'enlace' && item.nodoId !== user.nodoId) {
+      throw new ForbiddenException('Solo puedes eliminar ítems de tu nodo');
+    }
 
     // Verificar que no tenga unidades activas
     const activeUnits = await this.unitRepo.count({
@@ -204,20 +238,21 @@ export class InventoryService {
   // UNIDADES FÍSICAS
   // ══════════════════════════════════════════════════════════
 
-  async getUnitsByItem(itemId: string): Promise<InventoryUnit[]> {
-    await this.getItemById(itemId); // Verifica que el ítem exista
+  async getUnitsByItem(itemId: string, user?: User): Promise<InventoryUnit[]> {
+    await this.getItemById(itemId, user); // Verifica existencia + acceso por nodo
     return this.unitRepo.find({
       where: { itemId },
       order: { createdAt: 'ASC' },
     });
   }
 
-  async getUnitById(id: string): Promise<InventoryUnit> {
+  async getUnitById(id: string, user?: User): Promise<InventoryUnit> {
     const unit = await this.unitRepo.findOne({
       where: { id },
       relations: ['item', 'item.category'],
     });
     if (!unit) throw new NotFoundException(`Unidad ${id} no encontrada`);
+    this.assertNodeReadAccess(unit.item?.nodoId, user);
     return unit;
   }
 
@@ -226,8 +261,12 @@ export class InventoryService {
     itemId: string,
     dto: CreateInventoryUnitDto,
     userId: string,
+    user?: User,
   ): Promise<InventoryUnit> {
-    await this.getItemById(itemId);
+    const parentItem = await this.getItemById(itemId);
+    if (user?.role === 'enlace' && parentItem.nodoId !== user.nodoId) {
+      throw new ForbiddenException('Solo puedes agregar unidades a ítems de tu nodo');
+    }
 
     // Si tiene serial, verificar que no esté duplicado
     if (dto.serialNumber) {
@@ -276,8 +315,12 @@ export class InventoryService {
     itemId: string,
     dto: CreateGenericUnitsDto,
     userId: string,
+    user?: User,
   ): Promise<InventoryUnit[]> {
-    await this.getItemById(itemId);
+    const parentItem = await this.getItemById(itemId);
+    if (user?.role === 'enlace' && parentItem.nodoId !== user.nodoId) {
+      throw new ForbiddenException('Solo puedes agregar unidades a ítems de tu nodo');
+    }
 
     const units: InventoryUnit[] = [];
     for (let i = 0; i < dto.quantity; i++) {
@@ -312,8 +355,12 @@ export class InventoryService {
     return saved;
   }
 
-  async updateUnit(id: string, dto: UpdateInventoryUnitDto): Promise<InventoryUnit> {
+  async updateUnit(id: string, dto: UpdateInventoryUnitDto, user?: User): Promise<InventoryUnit> {
     const unit = await this.getUnitById(id);
+    // getUnitById carga relations: ['item', 'item.category'], así que unit.item está disponible
+    if (user?.role === 'enlace' && unit.item?.nodoId !== user.nodoId) {
+      throw new ForbiddenException('Solo puedes editar unidades de tu nodo');
+    }
     Object.assign(unit, dto);
     return this.unitRepo.save(unit);
   }
@@ -326,8 +373,10 @@ export class InventoryService {
     unitId: string,
     dto: CreateMovementDto,
     userId: string,
+    user?: User,
   ): Promise<InventoryMovement> {
-    const unit = await this.getUnitById(unitId);
+    // getUnitById valida existencia y acceso por nodo (si se pasa `user`)
+    const unit = await this.getUnitById(unitId, user);
 
     // Validaciones según el tipo de movimiento
     if (dto.movementType === MovementType.SALIDA && !dto.destination) {
@@ -385,7 +434,8 @@ export class InventoryService {
     return this.movementRepo.save(movement);
   }
 
-  async getMovementsByUnit(unitId: string): Promise<InventoryMovement[]> {
+  async getMovementsByUnit(unitId: string, user?: User): Promise<InventoryMovement[]> {
+    await this.getUnitById(unitId, user); // Verifica existencia + acceso por nodo
     return this.movementRepo.find({
       where: { unitId },
       order: { movementDate: 'DESC', createdAt: 'DESC' },

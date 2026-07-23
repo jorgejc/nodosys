@@ -33,6 +33,8 @@ export interface User {
   nodoName: string | null;
   faculty?: string | null;
   program?: string | null;
+  facultyId?: string | null;
+  programId?: string | null;
   documentType?: DocumentType | null;
   documentNumber?: string | null;
   cedula?: string | null;
@@ -82,6 +84,8 @@ export interface InventoryCategory {
   createdAt: string;
 }
 
+export type LocationType = 'gabinete' | 'mobiliario_suelto';
+
 // Ítem del catálogo (el modelo/tipo)
 export interface InventoryItem {
   id: string;
@@ -95,6 +99,11 @@ export interface InventoryItem {
   trackByUnit: boolean;
   imageUrl: string | null;
   notes: string | null;
+  // Ubicación física del ítem
+  locationType: LocationType | null;
+  cabinetNumber: string | null;
+  shelfNumber: string | null;
+  locationNote: string | null;
   units?: InventoryUnit[];
   // Calculados por el backend en listados
   totalUnits?: number;
@@ -135,6 +144,37 @@ export interface InventoryMovement {
   returnedAt: string | null;
   notes: string | null;
   createdAt: string;
+}
+
+// ── Procesos ──────────────────────────────────────────────────────
+export type ProcessType     = 'curso' | 'club' | 'taller' | 'proceso';
+export type ProcessStatus   = 'activo' | 'finalizado';
+export type SessionTemplate = 'tres_momentos' | 'descripcion_libre' | 'investigacion';
+
+export interface MissionAxis {
+  id: string;
+  name: string;
+  parentId: string | null;
+  children?: MissionAxis[];
+}
+
+export interface Process {
+  id: string;
+  name: string;
+  description: string | null;
+  type: ProcessType;
+  status: ProcessStatus;
+  nodoId: string | null;
+  workPlanTaskId: string | null;
+  strategyId: string | null;
+  missionAxisId: string | null;
+  sessionTemplate: SessionTemplate;
+  createdBy: string;
+  creator?: { id: string; name: string; email: string };
+  strategy?: { id: string; name: string } | null;
+  missionAxis?: { id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ── Plan de Trabajo ───────────────────────────────────────────────

@@ -14,6 +14,9 @@ export const inventoryItemService = {
   getAll: (params?: { nodoId?: string; categoryId?: string; search?: string }) =>
     api.get<InventoryItem[]>('/inventory/items', { params }).then((r) => r.data),
 
+  getCabinetNumbers: (nodoId?: string) =>
+    api.get<string[]>('/inventory/cabinet-numbers', { params: { nodoId } }).then((r) => r.data),
+
   getById: (id: string) =>
     api.get<InventoryItem>(`/inventory/items/${id}`).then((r) => r.data),
 

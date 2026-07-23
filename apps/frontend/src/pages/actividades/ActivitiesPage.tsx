@@ -11,7 +11,9 @@ import {
   Check, X,
 } from 'lucide-react';
 import { activitiesService } from '@/services/activities.service';
+import { usersService } from '@/services/users.service';
 import { useAuth } from '@/hooks/useAuth';
+import ExportMenu from '@/components/ui/ExportMenu';
 
 // ── Tipo local para la actividad en el listado ────────────
 // Evita usar Record<string, unknown> que causa errores de TypeScript
@@ -154,17 +156,30 @@ function ReviewModal({
 // ── Página principal ──────────────────────────────────────
 export default function ActivitiesPage() {
   const navigate = useNavigate();
-  const { isDecano, isVicerrector, isAdmin } = useAuth();
+  const { isDecano, isVicerrector, isAdmin, isViceExt, canViewActivityReports } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [nodoFilter, setNodoFilter] = useState('');
   const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   const isDirector = isAdmin || isDecano || isVicerrector;
 
+  // Nodos disponibles — solo carga para vice-ext
+  const nodosQuery = useQuery({
+    queryKey: ['nodos'],
+    queryFn: () => usersService.getNodos(),
+    enabled: isViceExt,
+    staleTime: 5 * 60 * 1000,
+  });
+  const nodos = nodosQuery.data ?? [];
+
   const q = useQuery({
-    queryKey: ['activities', statusFilter],
-    queryFn: () => activitiesService.getAll({ status: statusFilter || undefined }),
+    queryKey: ['activities', statusFilter, nodoFilter],
+    queryFn: () => activitiesService.getAll({
+      status: statusFilter || undefined,
+      nodoId: nodoFilter || undefined,
+    }),
   });
 
   const submitMutation = useMutation({
@@ -194,11 +209,48 @@ export default function ActivitiesPage() {
             Gestión de viáticos · {activities.length} solicitud{activities.length !== 1 ? 'es' : ''}
           </p>
         </div>
-        <button onClick={() => navigate('/actividades/nueva')}
-          className="flex items-center gap-2 bg-[#FF6B2B] hover:bg-[#e55c20] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
-          <Plus size={16} /> Nueva solicitud
-        </button>
+        <div className="flex items-center gap-2">
+          {canViewActivityReports && (
+            <ExportMenu
+              pdfUrl="/reports/activities/pdf"
+              excelUrl="/reports/activities/excel"
+              params={{
+                status: statusFilter || undefined,
+                nodoId: nodoFilter || undefined,
+              }}
+              label="Exportar"
+            />
+          )}
+          <button onClick={() => navigate('/actividades/nueva')}
+            className="flex items-center gap-2 bg-[#FF6B2B] hover:bg-[#e55c20] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
+            <Plus size={16} /> Nueva solicitud
+          </button>
+        </div>
       </div>
+
+      {/* Selector de nodo — solo para vicerrector_extension */}
+      {isViceExt && nodos.length > 0 && (
+        <div className="flex items-center gap-3">
+          <select
+            value={nodoFilter}
+            onChange={e => setNodoFilter(e.target.value)}
+            className="bg-[#111] border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#FF6B2B] min-w-[220px]"
+          >
+            <option value="">Todos los nodos</option>
+            {nodos.map(n => (
+              <option key={n.nodoId} value={n.nodoId}>{n.nodoName}</option>
+            ))}
+          </select>
+          {nodoFilter && (
+            <button
+              onClick={() => setNodoFilter('')}
+              className="text-xs text-[#555] hover:text-[#FF6B2B] transition-colors"
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Pestañas de estado */}
       <div className="flex gap-2 overflow-x-auto pb-1">

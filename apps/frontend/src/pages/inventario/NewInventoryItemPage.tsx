@@ -7,6 +7,7 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import { inventoryItemService, inventoryCategoryService } from '@/services/inventory.service';
 import { usersService } from '@/services/users.service';
 import { useAuthStore } from '@/stores/auth.store';
+import type { LocationType } from '@/types';
 
 const GLOBAL_ROLES = ['admin', 'vicerrector_extension', 'vicerrector_academico', 'equipo_extension', 'decano', 'coordinador'];
 
@@ -20,6 +21,10 @@ const schema = z.object({
   trackByUnit: z.boolean().default(true),
   referenceUrl: z.string().url('Introduce una URL válida').optional().or(z.literal('')),
   howToUse:     z.string().optional(),
+  locationType:  z.enum(['gabinete', 'mobiliario_suelto']).optional(),
+  cabinetNumber: z.string().max(100).optional(),
+  shelfNumber:   z.string().max(100).optional(),
+  locationNote:  z.string().max(300).optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -36,25 +41,35 @@ export default function NewInventoryItemPage() {
     enabled: isGlobalRole,
   });
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { trackByUnit: true },
   });
 
   const selectedNodoId = watch('nodoId');
+  const locationType = watch('locationType');
 
   const categoriesQuery = useQuery({
     queryKey: ['inventory-categories', selectedNodoId ?? user?.nodoId],
     queryFn: () => inventoryCategoryService.getAll(isGlobalRole ? selectedNodoId : undefined),
   });
 
+  const cabinetNumbersQuery = useQuery({
+    queryKey: ['cabinet-numbers', selectedNodoId ?? user?.nodoId],
+    queryFn: () => inventoryItemService.getCabinetNumbers(isGlobalRole ? (selectedNodoId ?? undefined) : undefined),
+    enabled: locationType === 'gabinete',
+  });
+
   const mutation = useMutation({
     mutationFn: (data: FormData) => {
       const payload = {
         ...data,
-        // Para roles globales: nodoId seleccionado; para roles nodo: el backend lo toma del JWT
         nodoId: isGlobalRole ? (data.nodoId ?? undefined) : undefined,
         referenceUrl: data.referenceUrl || undefined,
+        locationType:  data.locationType ?? undefined,
+        cabinetNumber: data.locationType === 'gabinete'          ? (data.cabinetNumber || undefined) : undefined,
+        shelfNumber:   data.locationType === 'gabinete'          ? (data.shelfNumber   || undefined) : undefined,
+        locationNote:  data.locationType === 'mobiliario_suelto' ? (data.locationNote  || undefined) : undefined,
       };
       return inventoryItemService.create(payload as never);
     },
@@ -204,6 +219,59 @@ export default function NewInventoryItemPage() {
             placeholder="Ej: Este juego se juega en equipos de 3. Primero se reparten las cartas..."
             className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-[#555] outline-none focus:border-[#FF6B2B] resize-none"
           />
+        </div>
+
+        {/* Ubicación */}
+        <div className="border-t border-[#2A2A2A] pt-4 space-y-4">
+          <p className="text-xs font-mono text-[#555] uppercase tracking-widest">// Ubicación física (opcional)</p>
+          <div>
+            <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">Tipo de ubicación</label>
+            <select
+              {...register('locationType')}
+              className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-4 py-2.5 text-sm text-white outline-none focus:border-[#FF6B2B]"
+            >
+              <option value="">Sin especificar</option>
+              <option value="gabinete">Gabinete / Entrepaño</option>
+              <option value="mobiliario_suelto">Mobiliario suelto</option>
+            </select>
+          </div>
+
+          {locationType === 'gabinete' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">N.° Gabinete</label>
+                <input
+                  {...register('cabinetNumber')}
+                  list="cabinet-list"
+                  placeholder="Ej: 3"
+                  className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-[#555] outline-none focus:border-[#FF6B2B]"
+                />
+                <datalist id="cabinet-list">
+                  {(cabinetNumbersQuery.data ?? []).map(n => <option key={n} value={n} />)}
+                </datalist>
+              </div>
+              <div>
+                <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">N.° Entrepaño</label>
+                <input
+                  {...register('shelfNumber')}
+                  placeholder="Ej: 2"
+                  className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-[#555] outline-none focus:border-[#FF6B2B]"
+                />
+              </div>
+            </div>
+          )}
+
+          {locationType === 'mobiliario_suelto' && (
+            <div>
+              <label className="text-xs text-[#666] uppercase tracking-wider block mb-1.5">Nota de ubicación</label>
+              <input
+                {...register('locationNote')}
+                placeholder="Ej: Junto a la puerta principal"
+                maxLength={300}
+                className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-[#555] outline-none focus:border-[#FF6B2B]"
+              />
+            </div>
+          )}
         </div>
 
         {/* Track by unit */}

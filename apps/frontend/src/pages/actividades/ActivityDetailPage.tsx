@@ -15,10 +15,11 @@ import {
   ArrowLeft, Send, Check, X, Plus, Trash2,
   Loader2, ExternalLink, Users, Image,
   FileText, DollarSign, CheckCircle2, Clock,
-  XCircle, PlayCircle, AlertTriangle, LucideIcon,
+  XCircle, PlayCircle, AlertTriangle, BookOpen, LucideIcon,
 } from 'lucide-react';
 import { activitiesService } from '@/services/activities.service';
 import { useAuth } from '@/hooks/useAuth';
+import SessionsTab from './SessionsTab';
 
 
 // ── Tipos ─────────────────────────────────────────────────
@@ -350,6 +351,7 @@ export default function ActivityDetailPage() {
   const isDirector = isAdmin || isDecano || isVicerrector;
 
   const [modal, setModal] = useState<'review' | 'expense' | 'participant' | 'evidence' | null>(null);
+  const [activeTab, setActiveTab] = useState<'solicitud' | 'sesiones'>('solicitud');
 
   const q = useQuery({
     queryKey: ['activity', id],
@@ -494,6 +496,34 @@ export default function ActivityDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Pestañas: Solicitud / Sesiones */}
+      <div className="flex border-b border-[#2A2A2A] gap-1">
+        {([
+          { key: 'solicitud', label: 'Solicitud y datos',  icon: FileText   },
+          { key: 'sesiones',  label: 'Sesiones / Bitácora', icon: BookOpen   },
+        ] as const).map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              activeTab === key
+                ? 'border-[#FF6B2B] text-[#FF6B2B]'
+                : 'border-transparent text-[#555] hover:text-[#888]'
+            }`}
+          >
+            <Icon size={14} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Contenido de pestaña Sesiones */}
+      {activeTab === 'sesiones' && (
+        <SessionsTab activityId={id!} activityTitle={a.title} />
+      )}
+
+      {/* Contenido de pestaña Solicitud (solo visible si está activa) */}
+      {activeTab === 'solicitud' && <>
 
       {/* Viáticos */}
       {viaticosItems.length > 0 && (
@@ -660,6 +690,7 @@ export default function ActivityDetailPage() {
       {modal === 'expense'     && <AddExpenseModal   activityId={id!} onClose={() => setModal(null)}/>}
       {modal === 'participant' && <AddParticipantModal activityId={id!} onClose={() => setModal(null)}/>}
       {modal === 'evidence'    && <AddEvidenceModal  activityId={id!} onClose={() => setModal(null)}/>}
+      </> /* cierra activeTab === 'solicitud' */ }
     </div>
   );
 }

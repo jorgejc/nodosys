@@ -86,13 +86,21 @@ export class User {
   @Column({ type: 'enum', enum: UserRole, enumName: 'users_role_enum', default: UserRole.DOCENTE })
   role: UserRole;
 
-  // Facultad a la que pertenece el docente (para revisión del plan de trabajo)
+  // Facultad a la que pertenece el docente (texto legacy — se sigue poblando para compatibilidad)
   @Column({ name: 'faculty', type: 'varchar', length: 200, nullable: true })
   faculty: string | null;
 
-  // Programa académico (ej: "Tecnología en Sistemas", "Ingeniería de Software")
+  // Programa académico (texto legacy)
   @Column({ name: 'program', type: 'varchar', length: 200, nullable: true })
   program: string | null;
+
+  // FK al catálogo de facultades (sin restricción FK real — nullable)
+  @Column({ name: 'faculty_id', type: 'uuid', nullable: true })
+  facultyId: string | null;
+
+  // FK al catálogo de programas (sin restricción FK real — nullable)
+  @Column({ name: 'program_id', type: 'uuid', nullable: true })
+  programId: string | null;
 
   @Column({ type: 'varchar', length: 30, nullable: true })
   phone: string | null;

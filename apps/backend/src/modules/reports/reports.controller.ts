@@ -1,14 +1,14 @@
 // reports.controller.ts
 import {
   Controller, Get, Param, Query, Res,
-  ParseUUIDPipe, UseGuards,
+  ParseUUIDPipe, UseGuards, ForbiddenException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { User } from '../users/entities/user.entity';
+import { User, UserRole } from '../users/entities/user.entity';
 
 @ApiTags('Reportes')
 @ApiBearerAuth()
@@ -63,6 +63,105 @@ export class ReportsController {
     const { nodoId: effectiveNodoId, nodoLabel } = this.resolveInventoryNodo(user, nodoId);
     const buffer = await this.svc.generateInventoryPdf(effectiveNodoId, nodoLabel);
     const filename = `inventario-nodo-${new Date().toISOString().split('T')[0]}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  // ── Actividades ───────────────────────────────────────────
+  private readonly ACTIVITY_REPORT_ROLES: UserRole[] = [
+    UserRole.ADMIN, UserRole.VICERRECTOR_EXTENSION,
+    UserRole.ENLACE, UserRole.DOCENTE,
+  ];
+
+  @Get('activities/excel')
+  @ApiOperation({ summary: 'Reporte de actividades en Excel' })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo',   required: false })
+  @ApiQuery({ name: 'status',   required: false })
+  @ApiQuery({ name: 'userId',   required: false })
+  @ApiQuery({ name: 'nodoId',   required: false })
+  async activitiesExcel(
+    @Res() res: Response,
+    @CurrentUser() user: User,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo')   dateTo?: string,
+    @Query('status')   status?: string,
+    @Query('userId')   userId?: string,
+    @Query('nodoId')   nodoId?: string,
+  ) {
+    if (!this.ACTIVITY_REPORT_ROLES.includes(user.role))
+      throw new ForbiddenException('Sin permiso para este reporte');
+    const buffer = await this.svc.generateActivitiesExcel(user, { dateFrom, dateTo, status, userId, nodoId });
+    const filename = `actividades-${new Date().toISOString().split('T')[0]}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  @Get('activities/pdf')
+  @ApiOperation({ summary: 'Reporte de actividades en PDF' })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo',   required: false })
+  @ApiQuery({ name: 'status',   required: false })
+  @ApiQuery({ name: 'userId',   required: false })
+  @ApiQuery({ name: 'nodoId',   required: false })
+  async activitiesPdf(
+    @Res() res: Response,
+    @CurrentUser() user: User,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo')   dateTo?: string,
+    @Query('status')   status?: string,
+    @Query('userId')   userId?: string,
+    @Query('nodoId')   nodoId?: string,
+  ) {
+    if (!this.ACTIVITY_REPORT_ROLES.includes(user.role))
+      throw new ForbiddenException('Sin permiso para este reporte');
+    const buffer = await this.svc.generateActivitiesPdf(user, { dateFrom, dateTo, status, userId, nodoId });
+    const filename = `actividades-${new Date().toISOString().split('T')[0]}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  // ── Usuarios ──────────────────────────────────────────────
+  @Get('users/excel')
+  @ApiOperation({ summary: 'Reporte de usuarios en Excel (solo admin)' })
+  @ApiQuery({ name: 'role',      required: false })
+  @ApiQuery({ name: 'nodoId',    required: false })
+  @ApiQuery({ name: 'facultyId', required: false })
+  async usersExcel(
+    @Res() res: Response,
+    @CurrentUser() user: User,
+    @Query('role')      role?: string,
+    @Query('nodoId')    nodoId?: string,
+    @Query('facultyId') facultyId?: string,
+  ) {
+    if (user.role !== UserRole.ADMIN)
+      throw new ForbiddenException('Solo el administrador puede acceder a este reporte');
+    const buffer = await this.svc.generateUsersExcel({ role, nodoId, facultyId });
+    const filename = `usuarios-${new Date().toISOString().split('T')[0]}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  @Get('users/pdf')
+  @ApiOperation({ summary: 'Reporte de usuarios en PDF (solo admin)' })
+  @ApiQuery({ name: 'role',      required: false })
+  @ApiQuery({ name: 'nodoId',    required: false })
+  @ApiQuery({ name: 'facultyId', required: false })
+  async usersPdf(
+    @Res() res: Response,
+    @CurrentUser() user: User,
+    @Query('role')      role?: string,
+    @Query('nodoId')    nodoId?: string,
+    @Query('facultyId') facultyId?: string,
+  ) {
+    if (user.role !== UserRole.ADMIN)
+      throw new ForbiddenException('Solo el administrador puede acceder a este reporte');
+    const buffer = await this.svc.generateUsersPdf({ role, nodoId, facultyId });
+    const filename = `usuarios-${new Date().toISOString().split('T')[0]}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
