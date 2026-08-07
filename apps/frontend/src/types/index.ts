@@ -43,6 +43,7 @@ export interface User {
   role: UserRole;
   phone: string | null;
   position: string | null;
+  signatureUrl?: string | null;   // firma del enlace (se reutiliza en los certificados)
   isActive: boolean;
   createdAt: string;
 }
@@ -291,4 +292,96 @@ export interface AxisActivity {
 
   createdAt: string;
   updatedAt: string;
+}
+
+// ══════════════════════════════════════════════════════════
+// Monitorías (Equipo de Nodo)
+// ══════════════════════════════════════════════════════════
+
+/** Tope de horas por semana de una monitora. */
+export const MAX_WEEKLY_HOURS = 12;
+
+export interface MonitorEvidence {
+  id:         string;
+  workPlanId: string;
+  activityId: string | null;
+  weekNumber: number | null;
+  fileUrl:    string;
+  caption:    string | null;
+  uploadedAt: string;
+}
+
+/** Tarea de una semana, con sus evidencias anidadas. */
+export interface MonitorWeekActivity {
+  id:           string;
+  weekId:       string | null;
+  weekNumber:   number;
+  description:  string;
+  hours:        number;
+  overrideNote: string | null;
+  createdAt:    string;
+  evidences:    MonitorEvidence[];
+}
+
+/** Semana del plan: rango de fechas + tareas + estado del tope. */
+export interface MonitorWeek {
+  id:            string;
+  weekNumber:    number;
+  startDate:     string | null;
+  endDate:       string | null;
+  hours:         number;
+  exceedsCap:    boolean;
+  activityCount: number;
+  activities:    MonitorWeekActivity[];
+}
+
+/** Resumen de una semana para el certificado (rango de horas). */
+export interface MonitorWeekSummary {
+  weekNumber:    number;
+  weekLabel:     string | null;
+  hours:         number;
+  exceedsCap:    boolean;
+  activityCount: number;
+}
+
+/** Perfil público de la monitora (sin datos sensibles). */
+export interface MonitorProfile {
+  id:             string;
+  name:           string;
+  email:          string;
+  documentType:   DocumentType | null;
+  documentNumber: string | null;
+  program:        string | null;
+  faculty:        string | null;
+  nodoId:         string | null;
+  nodoName:       string | null;
+  phone:          string | null;
+}
+
+/** Monitora en la lista del enlace, con sus planes por vigencia. */
+export interface MonitorListItem extends MonitorProfile {
+  plans: { id: string; vigencia: string }[];
+}
+
+/** Plan de monitoría con todo lo necesario para pintar la vista. */
+export interface MonitorWorkPlan {
+  id:             string;
+  monitorId:      string;
+  nodoId:         string | null;
+  vigencia:       string;
+  monitor?:       MonitorProfile;
+  weeks:          MonitorWeek[];
+  /** Evidencias viejas sin tarea asociada (compatibilidad). */
+  looseEvidences: MonitorEvidence[];
+  totalHours:     number;
+  createdAt:      string;
+  updatedAt:      string;
+}
+
+/** Total de horas de un rango de semanas (base del certificado). */
+export interface MonitorHoursRange {
+  from:       number;
+  to:         number;
+  totalHours: number;
+  weeks:      MonitorWeekSummary[];
 }

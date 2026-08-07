@@ -109,6 +109,12 @@ export class User {
   @Column({ type: 'varchar', length: 200, nullable: true })
   position: string | null;
 
+  // Firma escaneada del enlace (URL). Se sube una vez y se reutiliza en
+  // los certificados de horas. NO se expone en el DTO de actualización de
+  // usuario: solo se cambia por PATCH /monitors/me/signature.
+  @Column({ name: 'signature_url', type: 'varchar', length: 1000, nullable: true })
+  signatureUrl: string | null;
+
   // ¿El usuario puede iniciar sesión?
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
