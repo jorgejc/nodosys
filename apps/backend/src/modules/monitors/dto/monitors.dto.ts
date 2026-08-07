@@ -13,11 +13,20 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
+/**
+ * Formato de vigencia: AAAA-1 / AAAA-2. Vive aquí y se reutiliza en todos
+ * los sitios que la aceptan — incluidos los query params — porque el valor
+ * llega a crear filas: sin validar, cada string distinto genera un plan
+ * basura en un GET y uno largo revienta el VARCHAR(20) de la columna.
+ */
+export const VIGENCIA_PATTERN = /^\d{4}-[12]$/;
+export const VIGENCIA_MESSAGE = 'La vigencia debe tener el formato AAAA-1 o AAAA-2';
+
 // ── Crear plan de trabajo ─────────────────────────────────
 export class CreateMonitorPlanDto {
   @ApiProperty({ example: '2026-1', description: 'Vigencia del plan' })
   @IsString() @MaxLength(20)
-  @Matches(/^\d{4}-[12]$/, { message: 'La vigencia debe tener el formato AAAA-1 o AAAA-2' })
+  @Matches(VIGENCIA_PATTERN, { message: VIGENCIA_MESSAGE })
   vigencia: string;
 
   @ApiPropertyOptional({ description: 'Solo admin: crear el plan para otra monitora' })
@@ -119,6 +128,17 @@ export class UpdateSignatureDto {
          { message: 'La firma debe ser una URL https válida' })
   @MaxLength(1000)
   signatureUrl: string;
+}
+
+// ── Vigencia como query param ─────────────────────────────
+// GET /monitors/me/plan crea el plan si no existe, así que este query no es
+// solo un filtro: es una escritura. Se valida igual que el body.
+export class VigenciaQueryDto {
+  @ApiPropertyOptional({ example: '2026-1', description: 'Vigencia (por defecto, el semestre actual)' })
+  @IsString() @MaxLength(20)
+  @Matches(VIGENCIA_PATTERN, { message: VIGENCIA_MESSAGE })
+  @IsOptional()
+  vigencia?: string;
 }
 
 // ── Rango de semanas (query del certificado / total de horas) ──

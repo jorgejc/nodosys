@@ -27,6 +27,7 @@ import { User, UserRole } from '../users/entities/user.entity';
 import {
   CreateMonitorPlanDto, CreateWeekActivityDto, UpdateWeekActivityDto,
   CreateEvidenceDto, CreateMonitorWeekDto, UpdateMonitorWeekDto,
+  VIGENCIA_PATTERN, VIGENCIA_MESSAGE,
 } from './dto/monitors.dto';
 
 // Resumen de horas de una semana
@@ -103,6 +104,19 @@ export class MonitorsService {
         'asigne a un nodo antes de crear su plan de trabajo: sin nodo, el ' +
         'enlace no podría ver el plan ni certificar sus horas.',
       );
+    }
+  }
+
+  /**
+   * La vigencia llega por query en un GET que CREA el plan, así que un valor
+   * libre no es un filtro inofensivo: cada string distinto sembraría un plan
+   * basura y uno largo reventaría el VARCHAR(20). El pipe del controlador ya
+   * la valida; esto la vuelve a validar donde de verdad se escribe, para que
+   * ninguna ruta futura pueda saltárselo.
+   */
+  private assertVigencia(vigencia: string): void {
+    if (!VIGENCIA_PATTERN.test(vigencia)) {
+      throw new BadRequestException(VIGENCIA_MESSAGE);
     }
   }
 
@@ -359,32 +373,92 @@ export class MonitorsService {
     return week;
   }
 
+  /**
+   * Renumerar o refechar una semana.
+   *
+   * Renumerar toca DOS tablas (la semana y el `weekNumber` denormalizado de
+   * sus tareas), así que va en una transacción con la fila de la semana
+   * bloqueada: si se cayera entre las dos escrituras, las tareas quedarían
+   * apuntando a un número que ya no existe y el tope se calcularía sobre
+   * datos inconsistentes.
+   */
   async updateWeek(weekId: string, dto: UpdateMonitorWeekDto, user: User): Promise<MonitorWeek> {
-    const week = await this.getWeekForWrite(weekId, user);
+    await this.getWeekForWrite(weekId, user);   // permisos fuera de la transacción
 
-    const startDate = dto.startDate ?? week.startDate;
-    const endDate   = dto.endDate   ?? week.endDate;
-    if (startDate && endDate && endDate < startDate) {
-      throw new BadRequestException('La fecha de fin no puede ser anterior a la de inicio');
-    }
+    return this.dataSource.transaction(async (m) => {
+      const week = await this.lockWeek(m, weekId);
+      if (!week) throw new NotFoundException('Semana no encontrada');
 
-    if (dto.weekNumber !== undefined && dto.weekNumber !== week.weekNumber) {
-      const clash = await this.weekRepo.findOne({
-        where: { workPlanId: week.workPlanId, weekNumber: dto.weekNumber },
-      });
-      if (clash) throw new BadRequestException(`La semana ${dto.weekNumber} ya existe en este plan`);
-      // Mantener el weekNumber denormalizado de las actividades en sincronía
-      await this.activityRepo.update(
-        { weekId: week.id },
-        { weekNumber: dto.weekNumber },
-      );
-      week.weekNumber = dto.weekNumber;
-    }
+      const weekRepo = m.getRepository(MonitorWeek);
+      const actRepo  = m.getRepository(MonitorWeekActivity);
 
-    if (dto.startDate !== undefined) week.startDate = dto.startDate;
-    if (dto.endDate   !== undefined) week.endDate   = dto.endDate;
+      const startDate = dto.startDate ?? week.startDate;
+      const endDate   = dto.endDate   ?? week.endDate;
+      if (startDate && endDate && endDate < startDate) {
+        throw new BadRequestException('La fecha de fin no puede ser anterior a la de inicio');
+      }
 
-    return this.weekRepo.save(week);
+      if (dto.weekNumber !== undefined && dto.weekNumber !== week.weekNumber) {
+        const clash = await weekRepo.findOne({
+          where: { workPlanId: week.workPlanId, weekNumber: dto.weekNumber },
+        });
+        if (clash) throw new BadRequestException(`La semana ${dto.weekNumber} ya existe en este plan`);
+
+        await this.assertRenumberKeepsCap(actRepo, week, dto.weekNumber);
+
+        // Mantener el weekNumber denormalizado de las actividades en sincronía
+        await actRepo.update({ weekId: week.id }, { weekNumber: dto.weekNumber });
+        week.weekNumber = dto.weekNumber;
+      }
+
+      if (dto.startDate !== undefined) week.startDate = dto.startDate;
+      if (dto.endDate   !== undefined) week.endDate   = dto.endDate;
+
+      return weekRepo.save(week);
+    });
+  }
+
+  /**
+   * Tope de 12 h al renumerar.
+   *
+   * El chequeo de choque mira `monitor_weeks`, pero puede haber actividades
+   * con ese `weekNumber` que NO cuelgan de ninguna semana (huérfanas de datos
+   * viejos). Renumerar encima de ellas las fusiona y el total de la semana
+   * destino sube sin que nadie lo autorice: ese era el hueco.
+   *
+   * La regla es "no empeorar", no "no exceder": renombrar una semana que el
+   * enlace ya autorizó en 20 h (destino vacío) debe seguir funcionando; lo
+   * que se bloquea es la fusión que hace crecer el total por encima del tope.
+   * No depende del rol a propósito: renumerar es una operación estructural,
+   * no el sitio para autorizar horas extra (para eso está `overrideNote` en
+   * la tarea).
+   */
+  private async assertRenumberKeepsCap(
+    actRepo: Repository<MonitorWeekActivity>,
+    week: MonitorWeek,
+    targetNumber: number,
+  ): Promise<void> {
+    const [moving, atTarget] = await Promise.all([
+      actRepo.find({ where: { weekId: week.id } }),
+      actRepo.find({ where: { workPlanId: week.workPlanId, weekNumber: targetNumber } }),
+    ]);
+
+    const movingIds = new Set(moving.map((a) => a.id));
+    const sum = (list: MonitorWeekActivity[]) =>
+      list.reduce((s, a) => s + Number(a.hours), 0);
+
+    const current   = this.round1(sum(moving));
+    const resulting = this.round1(
+      current + sum(atTarget.filter((a) => !movingIds.has(a.id))),
+    );
+
+    if (resulting <= MAX_WEEKLY_HOURS || resulting <= current) return;
+
+    throw new BadRequestException(
+      `Mover esta semana al número ${targetNumber} la dejaría en ${resulting} h: ` +
+      `allí ya hay tareas registradas con ese número y el tope es de ` +
+      `${MAX_WEEKLY_HOURS} h. Ajusta las horas antes de renumerarla.`,
+    );
   }
 
   /** Borra una semana. Bloquea si todavía tiene tareas (evita pérdidas). */
@@ -410,6 +484,8 @@ export class MonitorsService {
     if (user.role !== UserRole.MONITOR) {
       throw new ForbiddenException('Solo las monitoras tienen plan de monitoría propio');
     }
+
+    this.assertVigencia(vigencia);
 
     // Antes de todo, no solo al crear: si la monitora ya tenía plan y le
     // retiraron el nodo, seguir dejándola entrar solo sirve para que acumule
@@ -528,6 +604,8 @@ export class MonitorsService {
     if (user.role === UserRole.MONITOR && monitorId !== user.id) {
       throw new ForbiddenException('No tienes permiso para ver el plan de otra monitora');
     }
+
+    if (vigencia !== undefined) this.assertVigencia(vigencia);
 
     const plan = await this.planRepo.findOne({
       where: vigencia ? { monitorId, vigencia } : { monitorId },
