@@ -17,7 +17,8 @@
  *  coordinador            → su facultad + su programa
  *  enlace                 → docente + gestor de un nodo
  *  docente                → solo su plan de trabajo
- *  monitor / auxiliar     → solo agregar inventario
+ *  monitor / auxiliar     → inventario (lectura)
+ *  monitor                → además, su propio plan de monitoría (horas y evidencias)
  */
 import { useAuthStore } from '@/stores/auth.store';
 import type { UserRole } from '@/types';
@@ -68,6 +69,14 @@ export function useAuth() {
   const canViewProcesos  = hasRole('admin','equipo_extension','enlace','docente');
   const canCreateProceso = hasRole('admin','equipo_extension','enlace','docente');
 
+  // ── Monitorías (Equipo de Nodo) ────────────────────────
+  // Los planes de monitoras son operativos del nodo (soporte de pago),
+  // no de supervisión académica: las vicerrectorías NO entran por ahora.
+  const canViewMonitorias    = hasRole('monitor','enlace','admin');
+  const canEditOwnMonitoria  = hasRole('monitor','admin');   // la monitora edita lo suyo
+  const canManageMonitorias  = hasRole('enlace','admin');    // el enlace ve las de su nodo
+  const canSignCertificates  = hasRole('enlace','admin');    // firma y certifica
+
   // ── Usuarios ───────────────────────────────────────────
   const canManageUsers = hasRole('admin');
   const canCreateUsers = hasRole('admin');
@@ -91,6 +100,8 @@ export function useAuth() {
     canViewActividades, canViewAllActivities, canReviewActivities,
     // Procesos
     canViewProcesos, canCreateProceso,
+    // Monitorías
+    canViewMonitorias, canEditOwnMonitoria, canManageMonitorias, canSignCertificates,
     // Usuarios
     canManageUsers, canCreateUsers, canAssignRoles,
     // Reportes

@@ -1,0 +1,151 @@
+# 1. Probar todo localmente
+# 2. Si hay cambios de BD, crear el script SQL
+# 3. Subir cambios a GitHub
+git add .
+git commit -m "feat: nueva funcionalidad X"
+git push origin main
+
+# Render redespliega automáticamente en ~3 minutos
+# 4. Ejecutar el script SQL nuevo en Supabase SQL Editor
+
+
+PASO 5 — Manejo de cambios de base de datos
+Aquí está la clave para no perder el hilo. Cuando necesites cambiar algo en la BD:
+En local — TypeORM con synchronize: true lo hace automático. Si añades una columna a una entidad, al reiniciar el backend ya aparece en la BD local.
+En Supabase — Debes escribir el SQL manualmente. Por ejemplo si añades una columna:
+
+-- Archivo: apps/backend/src/database/migration-YYYY-MM-DD-descripcion.sql
+ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS peso_kg DECIMAL(8,2);
+
+
+Comandos de referencia rápida
+
+# ── Desarrollo local ──────────────────────────────────────
+pnpm dev                    # Arranca backend + frontend juntos
+pnpm dev:backend            # Solo el backend (puerto 3001)
+pnpm dev:frontend           # Solo el frontend (puerto 5173)
+
+# ── Ver logs del backend ──────────────────────────────────
+# La terminal donde corre pnpm dev:backend muestra todo
+
+# ── Reiniciar backend (después de cambiar .env) ───────────
+# Ctrl+C y volver a pnpm dev:backend
+
+# ── Ver la BD local ───────────────────────────────────────
+psql -U postgres -d nodosys_dev
+\dt                          # Ver todas las tablas
+SELECT * FROM users;         # Consultar usuarios
+\q                           # Salir
+
+# ── Git workflow ──────────────────────────────────────────
+git status                   # Ver qué cambió
+git add .                    # Preparar cambios
+git commit -m "feat: ..."    # Guardar con mensaje descriptivo
+git push origin main         # Subir → dispara deploy automático
+
+
+
+
+=============================================================================
+=============================================================================
+
+
+Todo lo que llevamos construido:
+Backend (NestJS + TypeScript)
+
+modules/
+  auth/          → Login, registro, JWT, guards por rol
+  users/         → CRUD usuarios, 8 roles diferentes
+  inventory/     → Catálogo de ítems + unidades físicas individuales
+                   + movimientos (préstamos, devoluciones, bajas)
+  workplan/      → Plan de trabajo DO-F-002: ejes misionales,
+                   actividades con horas, sesiones, evidencias
+  reports/       → PDF y Excel de inventario y plan de trabajo
+  activities/    → Solicitudes de actividades con viáticos,
+                   gastos reales, participantes, evidencias
+
+
+
+Frontend (React + TypeScript + Tailwind)
+
+pages/
+  auth/          → Login con validación Zod
+  DashboardPage  → 3 vistas según rol: docente, directivo, operativo
+  inventario/    → Lista, detalle por unidad, formulario nuevo/editar
+  plan-trabajo/  → Lista de planes, detalle con ejes y actividades,
+                   modal de actividad con 3 pestañas (Hoja 1+2)
+  reportes/      → Descarga PDF y Excel de inventario y plan
+  usuarios/      → CRUD usuarios con tabla de permisos por rol
+  actividades/   → Lista con pestañas por estado, formulario con viáticos
+
+
+
+Base de datos (PostgreSQL / Supabase)
+
+Tablas: users, nodos, inventory_categories, inventory_items,
+        inventory_units, inventory_movements,
+        work_plans, work_plan_axes, axis_activities,
+        activity_requests, activity_expenses,
+        activity_participants, activity_evidence
+Vistas: v_axis_summary, v_plan_summary, v_item_units_summary
+
+
+
+
+Infraestructura
+
+Render    → Backend NestJS (gratis, auto-deploy desde GitHub)
+Vercel    → Frontend React (gratis, auto-deploy desde GitHub)
+Supabase  → PostgreSQL + Storage de fotos (gratis)
+
+
+
+
+
+
+
+Plan para los nuevos requerimientos
+1. Módulo de Bitácoras / Instructivo metodológico (Fase 6)
+Lo que describes es un sistema de sesiones estructuradas con la metodología de los 3 momentos. El esquema sería:
+
+course_sessions (sesiones de cada actividad/curso)
+  ├── Datos de la sesión (fecha, duración, tema, participantes)
+  ├── Momento 1 - Explorar (materiales, tiempo, objetivo, metodología)
+  ├── Momento 2 - Crear    (materiales, tiempo, objetivos, metodología)
+  ├── Momento 3 - Consolidar (materiales, tiempo, objetivos, metodología)
+  ├── Listado de participantes con asistencia
+  ├── Fotos y evidencias de la sesión
+  └── Certificabilidad (máximo 4 faltas)
+
+→ Export como informe/bitácora en PDF o Excel
+→ Vinculado al plan de trabajo (eje misional)
+→ Reemplaza las bitácoras en Notion/Word
+
+
+
+
+2. IA integrada (Fase 7)
+Usando la API de Claude que ya tienes disponible en los artifacts, podríamos agregar:
+
+Autocompletado inteligente: el docente escribe el tema, la IA sugiere el objetivo y la metodología para cada momento
+Resumen automático de sesiones: convierte notas en texto a bitácora estructurada
+Sugerencias de dimensiones de Digitalidad Próxima: basadas en la descripción de la actividad
+Generador de planes de taller: dado un tema y un público, genera los 3 momentos completos
+Asistente de reportes: responde preguntas sobre el inventario o el plan de trabajo en lenguaje natural
+
+
+
+=========== ERRORES BUGS HASTA LA FASE 5 ========================
+USUARIOS: No puedo agregar decanos ni vicerrector ni académico ni extensión, aunque en sí quien puede ver planes de trabajo es el vice académico, el vicerrector no tiene facultad asociada, ni programas como tal es muy independiente, él vigila, el decano hace parte de una facultad pero no de todas y puede ver los programas de esa facultad, , los usuarios en el rol admin no me muestra los usuarios que ya están creados, los que cree directamente a través del script en la bd, un enlace de nodo es un docente ocasional pero no todos los docentes son enlaces de nodos, permitir que los usuarios se puedan buscar por documento, nombre, facultad, programa o nodo
+
+INVENTARIOS: No me deja editar las unidades de los ítems, solo los ítems, agregar como estante (es como una vitrina y tiene entrepaños) no se como se llama exactamente, es como un gabinete con varios niveles, eso para saber la ubicación exacta de los materiales dentro del nodo, también si está fuera del nodo que se colocaría ? o cuando esté prestado o fuera del nodo, eso sería no por item sino por unidad, para saber donde está una unidad especifica de ese ítem, donde se colocaría por ejemplo un juego didáctico o que se le agregaría o en qué parte del inventario iría una descripción para saber cómo se juega o una url que me lleve al juego en YouTube por ejemplo donde se muestre un vídeo de alguien jugándolo o haciéndolo, que no sea obligatorio, o no se si en descripción del ítem puede ir, al inventario y a cualquier otra página que muestre muchos datos permitirle paginación o tener un menú dentro de la misma página para ver más o todos los datos o productos listados, si es paginación que sea máximo una lista de 10.
+
+PLANES DE TRABAJO: En los planes de trabajo los vicerrectores pueden ver, editar y crear planes de trabajo, de todos los docentes en general y de cualquier nodo. Los decanos solo pueden ver los docentes de su facultad y por programas.  Los coordinadores académicos que están adscritos a una facultad, tienen los mismos permisos que un decano, y pueden revisar planes de trabajo, Las opciones gestión de programas, representatividad en cuerpos colegiados u otros y otras actividades administrativas, van dentro de administración académica. Que los vicerrectores puedan buscar una facultad o un programa o un docente por su nombre o cedula, para visualizar sus planes de trabajo, si el docente no es de su facultad, no le genere resultados y que dentro de su facultad pueda ver los docentes por programas o buscar los programas para ver sus docentes.
+
+REPORTES: Acá que no solo se vean los reportes de inventarios y planes de trabajo, sino que también se puedan buscar reportes por ejemplo si son de inventario se busquen por nodos (son varios nodos) o quizá por nombre del docente enlace, en caso que esté logueado un vicerrector o el decano. En los planes de trabajo permita hacer búsquedas por docente, programa o facultad, si es el perfil de un docente solo le sale el del él, pero si es el vicerrector o el decano si le salgan todos los nodos o docentes enlaces de nodos. No se si este menú de reportes lo quitamos y lo ponemos dentro de un submenú dentro de cada opción por ejemplo el inventario tenga su reporte, los planes tengan sus reportes, si es un submenú dentro de la opción de inventario o de planes de trabajo o de cualquier otra opción que sea un submenú bien chévere, una vez ví uno con angular que era circular y uno picaba ahí y salían las opciones para ingresar a esa siguiente página, era un efecto y menú muy chévere.
+
+ACTIVIDADES: Estas solicitudes que solo pueda verlas el vicerrector de extensión, por ahora, y el docente que genera dicha solicitud que es el enlace de uno nodo, me imagino que se van a crear más roles en el sistema y perfiles para poder crear más usuarios pero aún no sé hasta que muestre el sistema por ahora esos dos, docente enlace y vicerrector de extensión que tampoco hace parte de una facultad ni de ningún programa, es un perfil más general y supervisor, administrativo, como el docente enlace solo vé las solicitudes de su nodo, pero el vice de extensión puede ver las de todos los nodos, salir un listado puede ser así como lo tienes, por aprobar, autorizadas, etc, Cuando pedimos solicitudes por el formulario de Google, piden nombre del profesor, no se si será relevante o sí, ya que como estamos automatizando el sistema toma la solicitud del usuario que la está realizando y el nodo también entonces no sé si el formulario del sistema nodosys no tenga que pedirla y la tome del usuario en sesión, también ese formulario pide el nodo que ya te dije si se pide del usuario de la sesión o si deba ingresarse manualmente. El formulario también pide le municipio donde se realizará la actividad, la fecha de la actividad, el tipo de estrategia, este es muy muy importante (Educación Precedente, Comunidad Docente, Ambientes Abiertos para el Aprendizaje, Acompañamiento Comunitario en Territorio, Investigación Relacionamiento y Gestión, (Juguemos ConCiencia, Robótica y Festivales Científicos - este es uno solo), Otro. También pide el título de la actividad, la descripción, también pregunta si se necesita recurso (ya creo que eso lo tenemos organizado) si no se necesita termina ahí, si se necesita hay que colocar que tipo de recurso y cuanto es el aproximado a gastar, después de escoger si necesito recurso me dice que detalle la necesidad, o sea las cantidades de los recursos que necesito, por ejemplo si es materiales, si necesito dos resma, si es transporte si necesito para una sola persona ida y vuelta, si es alimento para cuantas personas, y así, luego pregunta si se necesita pago anticipado o no, también pregunta el número de participantes, al final pregunta si cuenta o nó con proveedor de factura electróncia. 
+Recuerda un docente solo puede ver sus solicitudes, el vicerrector de extensión y su equipo que son otras personas que le ayudan en su labor administrativa pueden ver todas esas solicitudes de todos los nodos y estas actividades o solicitudes me deben permitir también hacer reportes por ejemplo de un período determinado de un mes o de un semestre o por nodos, también que me permita paginación o no sé si en el submenú que te dije cuál sería la mejor vista recuerda para todo este sistema el UI/UX para que se puedan ver todas esas solicitudes
+
+AL FINAL RECUERDA QUE SON DIFERENTES TIPOS DE USUARIOS CON DIFERENTES ROLES SIEMPRE TE LO HE DICHO Y DEPENDIENDO EL ROL SE DEFINEN LOS PERMISOS Y LAS VISTAS, SÉ QUE NO ES FÁCIL PERO CONFÍO MUCHO EN TÍ Y MIRA COMO VAMOS ADELANTADOS, FALTA POCO, NOS FALTA AÚN DOS MÓDULOS MÁS EL DE BITÁCORAS Y LA IA INTEGRADA QUE SERÁN PARA SACARLA DEL ESTADIO, OJALÁ PUEDA MOSTRAR ESTE PROYECTO EN LA UNIVERSIDAD, AHORA NO ME INTERESA VENDERLO SINO MANTENER MI TRABAJO QUE ME ESTOY VIENDO AMENAZADO POR EL AUXILIAR QUE TENGO QUE TIENE PALANCA POLÍTICA Y PODRÍA REEMPLAZARME POR ESO NECESITO HACER TODO ESTO, PRIMERO CORRIJAMOS LOS ERRORES Y ORGANICEMOS LO QUE NOS FALTA DE ESTOS MÓDULOS Y LUEGO AVANZAMOS CON LOS OTROS MÓDULOS PENDIENTES POR FAVOR AYÚDAME 
+

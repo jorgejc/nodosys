@@ -34,6 +34,7 @@ otra la referencie.
 | 12 | `migration-tipos-proceso.sql` | `mission_axes`; añade `strategy_id` / `mission_axis_id` / `session_template` a `processes`; columnas de investigación en `course_sessions` | **`strategies` (11)**, `processes` (9), `course_sessions` (10) |
 | 13 | `migration-fase4-actividades.sql` | añade `session_id`, `strategy_id`, `municipality_id`, `resource_detail`, `payment_type`, `has_electronic_invoice_provider` a `activity_requests` | **`strategies` + `municipalities` (11)**, `course_sessions` (10) |
 | 14 | `migration-inventario-ubicacion.sql` | añade `location_type`, `cabinet_number`, `shelf_number`, `location_note` a `inventory_items` | `inventory_items` (1) |
+| 15 | `migration-monitorias.sql` | añade `signature_url` a `users`; crea `monitor_work_plans`, `monitor_weeks`, `monitor_week_activities`, `monitor_evidences`; FK sin cascada destructiva y borrado lógico de evidencias | `users` (1) |
 
 `migration-catalogos.sql` no depende de nada, así que su única restricción es
 correr **antes** de las migraciones 12 y 13. Se coloca en el puesto 11 por
@@ -51,6 +52,7 @@ correr, **en este orden**, es:
 2. migration-tipos-proceso.sql
 3. migration-fase4-actividades.sql
 4. migration-inventario-ubicacion.sql
+5. migration-monitorias.sql          ← NUEVA (módulo Monitorías)
 ```
 
 > Si `migration-processes.sql` o `migration-sessions.sql` aún no se aplicaron

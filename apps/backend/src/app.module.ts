@@ -21,6 +21,7 @@ import { NodosModule } from './modules/nodos/nodos.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { ProcessesModule } from './modules/processes/processes.module';
 import { CatalogsModule } from './modules/catalogs/catalogs.module';
+import { MonitorsModule } from './modules/monitors/monitors.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { CatalogsModule } from './modules/catalogs/catalogs.module';
     SessionsModule,
     ProcessesModule,
     CatalogsModule,
+    MonitorsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

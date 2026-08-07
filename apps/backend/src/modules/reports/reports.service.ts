@@ -4,7 +4,10 @@
  * pdfmake 0.2.x: usa new PdfPrinter(fonts) → createPdfKitDocument(docDef)
  * exceljs:       usa Workbook/Worksheet API con estilos completos
  */
-import { Injectable, NotFoundException, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable, NotFoundException, BadRequestException,
+  ForbiddenException, Logger, OnModuleInit,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Between, FindOptionsWhere } from 'typeorm';
 import * as fs from 'fs';
@@ -16,6 +19,11 @@ import { WorkPlanAxis } from '../workplan/entities/work-plan-axis.entity';
 import { AxisActivity } from '../workplan/entities/axis-activity.entity';
 import { ActivityRequest } from '../activities/entities/activity-request.entity';
 import { User, UserRole } from '../users/entities/user.entity';
+import { MonitorWorkPlan } from '../monitors/entities/monitor-work-plan.entity';
+import { MonitorWeek } from '../monitors/entities/monitor-week.entity';
+import { MonitorWeekActivity } from '../monitors/entities/monitor-week-activity.entity';
+import { MonitorsService } from '../monitors/monitors.service';
+import { fetchImageAsDataUri } from './remote-image.util';
 import * as ExcelJS from 'exceljs';
 
 // pdfmake 0.3.x — importar así para Node.js
@@ -134,6 +142,16 @@ export class ReportsService implements OnModuleInit {
     private readonly actReqRepo: Repository<ActivityRequest>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+
+    // ── Monitorías ──
+    @InjectRepository(MonitorWorkPlan)
+    private readonly monitorPlanRepo: Repository<MonitorWorkPlan>,
+    @InjectRepository(MonitorWeekActivity)
+    private readonly monitorActivityRepo: Repository<MonitorWeekActivity>,
+    @InjectRepository(MonitorWeek)
+    private readonly monitorWeekRepo: Repository<MonitorWeek>,
+    // Dueño del control de acceso de monitorías (rol + aislamiento por nodo)
+    private readonly monitorsService: MonitorsService,
   ) {}
 
   onModuleInit() {
@@ -1158,5 +1176,412 @@ export class ReportsService implements OnModuleInit {
 
     const buf = await wb.xlsx.writeBuffer();
     return Buffer.from(buf);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // MONITORÍAS → helpers
+  // ══════════════════════════════════════════════════════════
+
+  /**
+   * Carga el plan de monitoría validando permisos con MonitorsService
+   * (rol permitido + aislamiento por nodo). Un enlace de otro nodo recibe 403
+   * antes de que se genere un solo byte del documento.
+   */
+  private async loadMonitorPlan(planId: string, user: User) {
+    const plan = await this.monitorsService.getPlanForRead(planId, user);
+    const [activities, weeks] = await Promise.all([
+      this.monitorActivityRepo.find({
+        where: { workPlanId: plan.id },
+        order: { weekNumber: 'ASC', createdAt: 'ASC' },
+      }),
+      this.monitorWeekRepo.find({ where: { workPlanId: plan.id } }),
+    ]);
+    const monitor = plan.monitor
+      ?? await this.userRepo.findOne({ where: { id: plan.monitorId } });
+
+    // Etiqueta de cada semana a partir de sus fechas: 'Semana 5 · 19/05–22/05'
+    const weekLabel = new Map<number, string>();
+    for (const w of weeks) {
+      weekLabel.set(w.weekNumber, this.fmtWeekLabel(w.weekNumber, w.startDate, w.endDate));
+    }
+
+    return { plan, activities, weekLabel, monitor };
+  }
+
+  /** 'Semana N · dd/mm–dd/mm' si hay fechas; si no, 'Semana N'. */
+  private fmtWeekLabel(weekNumber: number, startDate: string | null, endDate: string | null): string {
+    const dm = (d: string | null): string | null => {
+      if (!d) return null;
+      const [, m, day] = d.split('-');
+      return m && day ? `${day}/${m}` : null;
+    };
+    const a = dm(startDate);
+    const b = dm(endDate);
+    if (a && b) return `Semana ${weekNumber} · ${a}–${b}`;
+    if (a)      return `Semana ${weekNumber} · ${a}`;
+    return `Semana ${weekNumber}`;
+  }
+
+  /** Quién firma el certificado: el enlace que lo genera; si es admin, el enlace del nodo. */
+  private async resolveSigner(user: User, nodoId: string | null): Promise<User | null> {
+    if (user.role === UserRole.ENLACE) return user;
+    return this.monitorsService.findNodoEnlace(nodoId);
+  }
+
+  private fmtHours(n: number): string {
+    return Number.isInteger(n) ? String(n) : n.toFixed(1);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // MONITORÍAS → PLAN DE TRABAJO EN EXCEL
+  // ══════════════════════════════════════════════════════════
+  async generateMonitorPlanExcel(planId: string, user: User): Promise<Buffer> {
+    const { plan, activities, weekLabel, monitor } = await this.loadMonitorPlan(planId, user);
+    const signer = await this.resolveSigner(user, plan.nodoId);
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'NodoSys · IU Digital';
+    const ws = wb.addWorksheet('Plan de Trabajo');
+
+    // ── Título ──
+    ws.mergeCells('A1:C1');
+    const title = ws.getCell('A1');
+    title.value = 'PLAN DE TRABAJO · PROGRAMA MONITORÍAS';
+    title.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+    title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF6B2B' } };
+    title.alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getRow(1).height = 30;
+
+    // ── Encabezado institucional ──
+    const info: [string, string][] = [
+      ['ÁREA / NODO', monitor?.nodoName ?? '—'],
+      ['ENLACE',      signer?.name ?? '—'],
+      ['MONITOR(A)',  monitor?.name ?? '—'],
+      ['PROGRAMA',    monitor?.program ?? '—'],
+      ['VIGENCIA',    plan.vigencia],
+    ];
+
+    let row = 3;
+    info.forEach(([label, value]) => {
+      const r = ws.getRow(row++);
+      r.getCell(1).value = label;
+      r.getCell(1).font  = { bold: true, size: 10 };
+      r.getCell(1).fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD8E4F0' } };
+      ws.mergeCells(`B${r.number}:C${r.number}`);
+      r.getCell(2).value = value;
+      r.getCell(2).font  = { size: 10 };
+      r.height = 18;
+    });
+    row++;
+
+    // ── Cabecera de la tabla ──
+    const headerRow = ws.getRow(row++);
+    ['SEMANA', 'DESCRIPCIÓN DE LA ACTIVIDAD', 'HORAS'].forEach((h, i) => {
+      const c = headerRow.getCell(i + 1);
+      c.value = h;
+      c.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF6B2B' } };
+      c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      c.border = { bottom: { style: 'thin' } };
+    });
+    headerRow.height = 22;
+
+    // ── Actividades ──
+    activities.forEach((act, i) => {
+      const r = ws.getRow(row++);
+      r.getCell(1).value = weekLabel.get(act.weekNumber) ?? act.weekLabel ?? `Semana ${act.weekNumber}`;
+      r.getCell(2).value = act.description;
+      r.getCell(3).value = Number(act.hours);
+      r.font = { size: 10 };
+      r.eachCell((c) => {
+        c.alignment = { wrapText: true, vertical: 'top' };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: i % 2 === 0 ? 'FFF9F9F9' : 'FFFFFFFF' } };
+        c.border = { bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } } };
+      });
+      r.getCell(3).alignment = { horizontal: 'center', vertical: 'top' };
+      r.getCell(3).numFmt = '0.0';
+    });
+
+    if (activities.length === 0) {
+      const r = ws.getRow(row++);
+      ws.mergeCells(`A${r.number}:C${r.number}`);
+      r.getCell(1).value = 'Sin actividades registradas.';
+      r.getCell(1).font = { size: 10, italic: true, color: { argb: 'FF888888' } };
+      r.getCell(1).alignment = { horizontal: 'center' };
+    }
+
+    // ── Total ──
+    const totalHours = activities.reduce((s, a) => s + Number(a.hours), 0);
+    const totalRow = ws.getRow(row);
+    ws.mergeCells(`A${totalRow.number}:B${totalRow.number}`);
+    totalRow.getCell(1).value = 'TOTAL DE HORAS';
+    totalRow.getCell(3).value = Math.round(totalHours * 10) / 10;
+    totalRow.getCell(3).numFmt = '0.0';
+    [1, 3].forEach((i) => {
+      const c = totalRow.getCell(i);
+      c.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF6B2B' } };
+      c.alignment = { horizontal: i === 1 ? 'right' : 'center', vertical: 'middle' };
+    });
+    totalRow.height = 24;
+
+    ws.getColumn(1).width = 26;
+    ws.getColumn(2).width = 70;
+    ws.getColumn(3).width = 12;
+
+    const buf = await wb.xlsx.writeBuffer();
+    return Buffer.from(buf);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // MONITORÍAS → CERTIFICADO DE HORAS (PDF)
+  // ══════════════════════════════════════════════════════════
+
+  /**
+   * Constancias del formato oficial. Se dejan aquí para que el enlace pueda
+   * ajustar la redacción en un solo sitio si Vicerrectoría cambia el formato.
+   */
+  private readonly CERT_CONSTANCIAS: string[] = [
+    'Que el/la monitor(a) desarrolló las actividades registradas en su plan de trabajo ' +
+    'durante las semanas certificadas, bajo el acompañamiento del enlace del nodo.',
+
+    'Que las horas aquí certificadas corresponden a las actividades efectivamente ' +
+    'ejecutadas y cuentan con las evidencias de soporte en el sistema NodoSys.',
+
+    'Que la presente certificación se expide para efectos del trámite de pago del ' +
+    'programa de monitorías de la IU Digital de Antioquia.',
+  ];
+
+  async generateMonitorCertificatePdf(
+    planId: string,
+    opts: { from: number; to: number; observaciones?: string },
+    user: User,
+  ): Promise<Buffer> {
+    const { plan, activities, monitor } = await this.loadMonitorPlan(planId, user);
+
+    // El certificado es el documento de pago y va firmado por el enlace. Leer
+    // el plan propio no basta: la monitora NO puede autoexpedirse un
+    // certificado con la firma de su enlace. Solo firma quien certifica.
+    if (user.role !== UserRole.ENLACE && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException(
+        'Solo el enlace del nodo puede emitir el certificado de horas',
+      );
+    }
+
+    if (opts.from > opts.to) {
+      throw new BadRequestException('El rango de semanas es inválido');
+    }
+
+    const inRange = activities.filter(
+      (a) => a.weekNumber >= opts.from && a.weekNumber <= opts.to,
+    );
+    const totalHours = Math.round(
+      inRange.reduce((s, a) => s + Number(a.hours), 0) * 10,
+    ) / 10;
+
+    const signer = await this.resolveSigner(user, plan.nodoId);
+
+    // Firma remota: si falla la descarga el certificado sale con la línea
+    // en blanco para firmar a mano, nunca con una excepción.
+    const signatureImage = await fetchImageAsDataUri(signer?.signatureUrl);
+
+    const hoy = new Date().toLocaleDateString('es-CO', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
+    const nodoLabel   = monitor?.nodoName ?? '—';
+    const monitorDoc  = monitor?.documentNumber
+      ? `${monitor.documentType ?? 'CC'} ${monitor.documentNumber}`
+      : '—';
+
+    const content: unknown[] = [
+      {
+        text: 'CERTIFICACIÓN DE HORAS EJECUTADAS',
+        fontSize: 15, bold: true, alignment: 'center',
+        color: '#1A1A1A', margin: [0, 0, 0, 4],
+      },
+      {
+        text: 'Programa monitorías IU Digital de Antioquia',
+        fontSize: 11, alignment: 'center', color: '#FF6B2B',
+        margin: [0, 0, 0, 12],
+      },
+      {
+        canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1.5, lineColor: '#FF6B2B' }],
+        margin: [0, 0, 0, 14],
+      },
+
+      // ── Datos generales ──
+      {
+        table: {
+          widths: [110, '*', 70, '*'],
+          body: [
+            [
+              { text: 'VIGENCIA', style: 'lbl' }, { text: plan.vigencia, style: 'val' },
+              { text: 'FECHA', style: 'lbl' },    { text: hoy, style: 'val' },
+            ],
+            [
+              { text: 'NODO', style: 'lbl' },     { text: nodoLabel, style: 'val' },
+              { text: 'ENLACE', style: 'lbl' },   { text: signer?.name ?? '—', style: 'val' },
+            ],
+          ],
+        },
+        layout: {
+          fillColor: (r: number) => (r % 2 === 0 ? '#F5F5F5' : '#FFFFFF'),
+          hLineColor: () => '#DDDDDD', vLineColor: () => '#DDDDDD',
+          hLineWidth: () => 0.5, vLineWidth: () => 0.5,
+        },
+        margin: [0, 0, 0, 14],
+      },
+
+      // ── Información del monitor ──
+      { text: 'INFORMACIÓN DEL MONITOR', style: 'section' },
+      {
+        table: {
+          widths: [110, '*', 70, '*'],
+          body: [
+            [
+              { text: 'NOMBRE', style: 'lbl' },   { text: monitor?.name ?? '—', style: 'val' },
+              { text: 'DOCUMENTO', style: 'lbl' },{ text: monitorDoc, style: 'val' },
+            ],
+            [
+              { text: 'PROGRAMA', style: 'lbl' },
+              { text: monitor?.program ?? '—', style: 'val', colSpan: 3 }, '', '',
+            ],
+          ],
+        },
+        layout: {
+          fillColor: (r: number) => (r % 2 === 0 ? '#F5F5F5' : '#FFFFFF'),
+          hLineColor: () => '#DDDDDD', vLineColor: () => '#DDDDDD',
+          hLineWidth: () => 0.5, vLineWidth: () => 0.5,
+        },
+        margin: [0, 0, 0, 14],
+      },
+
+      // ── Texto de certificación ──
+      {
+        text: [
+          'El suscrito ', { text: signer?.name ?? '__________________', bold: true },
+          ', en calidad de ', { text: signer?.position ?? 'Enlace de Nodo', bold: true },
+          ' del nodo ', { text: nodoLabel, bold: true },
+          ' de la Institución Universitaria Digital de Antioquia, certifica que ',
+          { text: monitor?.name ?? '__________________', bold: true },
+          ', identificado(a) con ', { text: monitorDoc, bold: true },
+          ', cumplió con el plan de trabajo concertado dentro del programa de monitorías ',
+          'durante el periodo que a continuación se relaciona.',
+        ],
+        fontSize: 10, alignment: 'justify', lineHeight: 1.35,
+        color: '#1A1A1A', margin: [0, 0, 0, 14],
+      },
+
+      // ── Semanas y horas certificadas ──
+      {
+        table: {
+          widths: ['*', 150],
+          body: [
+            [
+              { text: 'SEMANAS DE EJECUCIÓN', style: 'certLbl' },
+              { text: 'HORAS CERTIFICADAS',   style: 'certLbl', alignment: 'center' },
+            ],
+            [
+              {
+                text: `De la semana ${opts.from} a la semana ${opts.to}`,
+                fontSize: 11, color: '#1A1A1A', margin: [6, 8],
+              },
+              {
+                text: `${this.fmtHours(totalHours)} horas`,
+                fontSize: 16, bold: true, color: '#FF6B2B',
+                alignment: 'center', margin: [6, 6],
+              },
+            ],
+          ],
+        },
+        layout: {
+          fillColor: (r: number) => (r === 0 ? '#1A1A1A' : '#FFFFFF'),
+          hLineColor: () => '#FF6B2B', vLineColor: () => '#FF6B2B',
+          hLineWidth: () => 0.8, vLineWidth: () => 0.8,
+        },
+        margin: [0, 0, 0, 16],
+      },
+
+      // ── Constancias ──
+      { text: 'SE HACE CONSTAR', style: 'section' },
+      {
+        ol: this.CERT_CONSTANCIAS.map((t) => ({
+          text: t, fontSize: 9.5, alignment: 'justify',
+          lineHeight: 1.3, margin: [0, 0, 0, 6],
+        })),
+        margin: [0, 0, 0, 14],
+      },
+
+      // ── Observaciones ──
+      { text: 'OBSERVACIONES', style: 'section' },
+      {
+        table: {
+          widths: ['*'],
+          body: [[{
+            text: opts.observaciones?.trim() || 'Sin observaciones.',
+            fontSize: 9.5, color: opts.observaciones?.trim() ? '#1A1A1A' : '#888888',
+            alignment: 'justify', lineHeight: 1.3, margin: [6, 8],
+          }]],
+        },
+        layout: {
+          fillColor: () => '#FAFAFA',
+          hLineColor: () => '#DDDDDD', vLineColor: () => '#DDDDDD',
+          hLineWidth: () => 0.5, vLineWidth: () => 0.5,
+        },
+        margin: [0, 0, 0, 30],
+      },
+
+      // ── Firma ──
+      {
+        columns: [
+          {
+            width: 250,
+            stack: [
+              signatureImage
+                ? { image: signatureImage, fit: [180, 60], margin: [0, 0, 0, 2] }
+                : { text: ' ', margin: [0, 0, 0, 46] },
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 210, y2: 0, lineWidth: 0.8, lineColor: '#1A1A1A' }] },
+              { text: signer?.name ?? '—', fontSize: 10, bold: true, margin: [0, 4, 0, 0], color: '#1A1A1A' },
+              { text: signer?.position ?? 'Enlace de Nodo', fontSize: 9, color: '#555555' },
+              { text: `Nodo ${nodoLabel}`, fontSize: 9, color: '#555555' },
+            ],
+          },
+          { width: 20, text: '' },
+          {
+            width: '*',
+            stack: [
+              { text: ' ', margin: [0, 0, 0, 46] },
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 210, y2: 0, lineWidth: 0.8, lineColor: '#1A1A1A' }] },
+              { text: monitor?.name ?? '—', fontSize: 10, bold: true, margin: [0, 4, 0, 0], color: '#1A1A1A' },
+              { text: 'Monitor(a)', fontSize: 9, color: '#555555' },
+              { text: monitorDoc, fontSize: 9, color: '#555555' },
+            ],
+          },
+        ],
+      },
+    ];
+
+    // LETTER vertical: 8.5in × 11in = 612pt × 792pt
+    return buildPdf({
+      pageSize: 'LETTER',
+      pageOrientation: 'portrait',
+      pageMargins: [48, this.topMarginPt(612), 48, this.bottomMarginPt(612)],
+      header: this.makePdfHeader() ?? {
+        text: 'IU Digital de Antioquia · Programa Monitorías',
+        fontSize: 8, color: '#555555', margin: [48, 16, 0, 0],
+      },
+      footer: this.makePdfFooter() ?? ((page: number, pages: number) => ({
+        text: `Página ${page} de ${pages}  ·  Certificación de horas · NodoSys · IU Digital`,
+        fontSize: 7, color: '#555555', alignment: 'center', margin: [0, 8, 0, 0],
+      })),
+      content,
+      styles: {
+        section: { fontSize: 10, bold: true, color: '#FF6B2B', margin: [0, 0, 0, 6] },
+        lbl:     { fontSize: 8, bold: true, color: '#555555', margin: [5, 5] },
+        val:     { fontSize: 9.5, color: '#1A1A1A', margin: [5, 5] },
+        certLbl: { fontSize: 9, bold: true, color: '#FFFFFF', margin: [6, 5] },
+      },
+      defaultStyle: { font: 'Roboto', color: '#222222' },
+    });
   }
 }
