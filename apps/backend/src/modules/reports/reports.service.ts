@@ -1342,11 +1342,18 @@ export class ReportsService implements OnModuleInit {
    * ajustar la redacción en un solo sitio si Vicerrectoría cambia el formato.
    */
   private readonly CERT_CONSTANCIAS: string[] = [
-    'Que el/la monitor(a) desarrolló las actividades registradas en su plan de trabajo ' +
-    'durante las semanas certificadas, bajo el acompañamiento del enlace del nodo.',
+    'Que el/la monitor(a) tiene registradas en el sistema NodoSys las actividades ' +
+    'que conforman su plan de trabajo para las semanas relacionadas, bajo el ' +
+    'acompañamiento del enlace del nodo.',
 
-    'Que las horas aquí certificadas corresponden a las actividades efectivamente ' +
-    'ejecutadas y cuentan con las evidencias de soporte en el sistema NodoSys.',
+    // Ojo: el total sale de sumar las horas registradas en el plan. El sistema
+    // NO guarda un estado de ejecución ni exige evidencia por actividad, así
+    // que esta constancia no puede afirmar ejecución verificada: quien valida
+    // es el enlace al firmar. Si algún día se añade ese estado, aquí es donde
+    // se cambia la redacción.
+    'Que el total de horas corresponde a la suma de las horas registradas en el ' +
+    'plan de trabajo para el rango de semanas indicado, y que su validación ' +
+    'corresponde al enlace de nodo que suscribe esta certificación.',
 
     'Que la presente certificación se expide para efectos del trámite de pago del ' +
     'programa de monitorías de la IU Digital de Antioquia.',
@@ -1395,7 +1402,7 @@ export class ReportsService implements OnModuleInit {
 
     const content: unknown[] = [
       {
-        text: 'CERTIFICACIÓN DE HORAS EJECUTADAS',
+        text: 'CERTIFICACIÓN DE HORAS DEL PLAN DE TRABAJO',
         fontSize: 15, bold: true, alignment: 'center',
         color: '#1A1A1A', margin: [0, 0, 0, 4],
       },
@@ -1465,8 +1472,9 @@ export class ReportsService implements OnModuleInit {
           ' de la Institución Universitaria Digital de Antioquia, certifica que ',
           { text: monitor?.name ?? '__________________', bold: true },
           ', identificado(a) con ', { text: monitorDoc, bold: true },
-          ', cumplió con el plan de trabajo concertado dentro del programa de monitorías ',
-          'durante el periodo que a continuación se relaciona.',
+          ', tiene registrado el plan de trabajo concertado dentro del programa de ',
+          'monitorías, con las horas que a continuación se relacionan para el periodo ',
+          'certificado.',
         ],
         fontSize: 10, alignment: 'justify', lineHeight: 1.35,
         color: '#1A1A1A', margin: [0, 0, 0, 14],
@@ -1479,7 +1487,7 @@ export class ReportsService implements OnModuleInit {
           body: [
             [
               { text: 'SEMANAS DE EJECUCIÓN', style: 'certLbl' },
-              { text: 'HORAS CERTIFICADAS',   style: 'certLbl', alignment: 'center' },
+              { text: 'HORAS REGISTRADAS',   style: 'certLbl', alignment: 'center' },
             ],
             [
               {

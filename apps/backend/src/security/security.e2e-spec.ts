@@ -649,6 +649,34 @@ describe('Security Suite — Escalada de Privilegios e Aislamiento por Nodo', ()
     expect(res.status).toBe(403);   // ni siquiera llega a mirar la semana
   });
 
+  // ── Vigencia: el query de un GET que CREA filas ───────────
+
+  it.each([
+    ['texto libre',      'primer-semestre'],
+    ['semestre inválido', '2026-3'],
+    ['muy larga',        'x'.repeat(300)],
+  ])('22i. Monitora A1: vigencia %s → 400 y no siembra plan', async (_label, vigencia) => {
+    const antes = await monitorPlanRepo.count({ where: { monitorId: users.monitoraA1.id } });
+
+    const res = await request(app.getHttpServer())
+      .get(`/api/monitors/me/plan?vigencia=${encodeURIComponent(vigencia)}`)
+      .set('Authorization', `Bearer ${tokens.monitoraA1}`);
+
+    expect(res.status).toBe(400);
+
+    // Lo que de verdad importa: no quedó un plan basura en la base
+    const despues = await monitorPlanRepo.count({ where: { monitorId: users.monitoraA1.id } });
+    expect(despues).toBe(antes);
+  });
+
+  it('22j. Enlace A: vigencia inválida en el plan de una monitora → 400', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/monitors/${users.monitoraA1.id}/plan?vigencia=basura`)
+      .set('Authorization', `Bearer ${tokens.enlaceA}`);
+
+    expect(res.status).toBe(400);
+  });
+
   // ── Retirada del nodo (no solo cambio) ────────────────────
   // Antes de tener plan, assertHasNodo ya cortaba. El flanco es la monitora
   // que YA tenía plan y a la que luego le quitan el nodo: sin este corte

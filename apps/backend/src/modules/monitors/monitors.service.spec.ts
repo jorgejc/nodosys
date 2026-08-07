@@ -674,6 +674,108 @@ describe('MonitorsService', () => {
   });
 
   // ══════════════════════════════════════════════════════════
+  // 10c. La vigencia del query no siembra planes basura
+  // ══════════════════════════════════════════════════════════
+  describe('validación de vigencia', () => {
+    const monitora = makeUser(UserRole.MONITOR, { id: 'monitora-1', nodoId: NODO_A });
+
+    beforeEach(() => planRepo.findOne.mockResolvedValue(null));
+
+    it.each([
+      ['texto libre',        'primer-semestre'],
+      ['semestre inventado', '2026-3'],
+      ['año incompleto',     '26-1'],
+      ['cadena vacía',       ''],
+      ['muy larga (rompe el VARCHAR 20)', '2026-1'.padEnd(300, 'x')],
+      ['con inyección',      "2026-1'; DROP TABLE monitor_work_plans;--"],
+    ])('rechaza %s y NO crea plan', async (_label, vigencia) => {
+      await expect(service.findOrCreateMyPlan(monitora, vigencia))
+        .rejects.toThrow(BadRequestException);
+      expect(planRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('acepta una vigencia con el formato correcto', async () => {
+      // 1ª llamada: no existe plan para esa vigencia → se crea.
+      // 2ª: findPlanDetail lo relee por id, ya creado.
+      planRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(makePlan({ monitorId: 'monitora-1', nodoId: NODO_A }));
+
+      await expect(service.findOrCreateMyPlan(monitora, '2026-2')).resolves.toBeDefined();
+      expect(planRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ vigencia: '2026-2', monitorId: 'monitora-1' }),
+      );
+    });
+
+    it('findMonitorPlan también la valida', async () => {
+      const enlace = makeUser(UserRole.ENLACE, { id: 'enlace-a', nodoId: NODO_A });
+      await expect(service.findMonitorPlan('monitora-1', 'basura', enlace))
+        .rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════
+  // 10d. Renumerar una semana no puede saltarse el tope
+  // ══════════════════════════════════════════════════════════
+  describe('updateWeek — renumerar', () => {
+    const monitora = makeUser(UserRole.MONITOR, { id: 'monitora-1', nodoId: NODO_A });
+
+    beforeEach(() => {
+      planRepo.findOne.mockResolvedValue(makePlan({ monitorId: 'monitora-1', nodoId: NODO_A }));
+      weekRepo.findOne.mockImplementation(({ where }: { where: { id?: string } }) =>
+        where.id === 'week-5'
+          ? Promise.resolve({ id: 'week-5', workPlanId: 'plan-1', weekNumber: 5,
+                              startDate: '2026-02-02', endDate: '2026-02-06' })
+          : Promise.resolve(null));   // el número destino está libre en monitor_weeks
+    });
+
+    it('bloquea la fusión con tareas huérfanas que rompería el tope', async () => {
+      activityRepo.find.mockImplementation(({ where }: { where: { weekId?: string } }) =>
+        where.weekId === 'week-5'
+          // 8 h que se mueven...
+          ? Promise.resolve([{ id: 'a1', hours: 8 }])
+          // ...sobre 7 h que ya tenían el número 7 sin colgar de ninguna semana
+          : Promise.resolve([{ id: 'huerfana', hours: 7 }]));
+
+      await expect(service.updateWeek('week-5', { weekNumber: 7 }, monitora))
+        .rejects.toThrow(BadRequestException);
+      expect(activityRepo.update).not.toHaveBeenCalled();
+      expect(weekRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('permite renumerar una semana ya autorizada si el destino está vacío', async () => {
+      // 20 h autorizadas por el enlace; mover 5 → 7 no empeora nada
+      activityRepo.find.mockImplementation(({ where }: { where: { weekId?: string } }) =>
+        where.weekId === 'week-5'
+          ? Promise.resolve([{ id: 'a1', hours: 20 }])
+          : Promise.resolve([]));
+
+      await expect(service.updateWeek('week-5', { weekNumber: 7 }, monitora))
+        .resolves.toBeDefined();
+      expect(activityRepo.update).toHaveBeenCalledWith({ weekId: 'week-5' }, { weekNumber: 7 });
+    });
+
+    it('permite la fusión si el total resultante cabe en el tope', async () => {
+      activityRepo.find.mockImplementation(({ where }: { where: { weekId?: string } }) =>
+        where.weekId === 'week-5'
+          ? Promise.resolve([{ id: 'a1', hours: 5 }])
+          : Promise.resolve([{ id: 'huerfana', hours: 4 }]));
+
+      await expect(service.updateWeek('week-5', { weekNumber: 7 }, monitora))
+        .resolves.toBeDefined();
+    });
+
+    it('corre en transacción y bloquea la fila de la semana', async () => {
+      activityRepo.find.mockResolvedValue([]);
+      await service.updateWeek('week-5', { startDate: '2026-02-03' }, monitora);
+
+      expect(dataSource.transaction).toHaveBeenCalled();
+      const qb = weekRepo.createQueryBuilder.mock.results[0].value;
+      expect(qb.setLock).toHaveBeenCalledWith('pessimistic_write');
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════
   // 11. Las evidencias no se destruyen
   // ══════════════════════════════════════════════════════════
   describe('deleteEvidence — borrado lógico', () => {

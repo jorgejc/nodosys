@@ -15,7 +15,7 @@ import { MonitorsService } from './monitors.service';
 import {
   CreateMonitorPlanDto, CreateWeekActivityDto, UpdateWeekActivityDto,
   CreateEvidenceDto, UpdateSignatureDto, WeekRangeQueryDto,
-  CreateMonitorWeekDto, UpdateMonitorWeekDto,
+  CreateMonitorWeekDto, UpdateMonitorWeekDto, VigenciaQueryDto,
 } from './dto/monitors.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -32,8 +32,8 @@ export class MonitorsController {
   @Get('me/plan')
   @ApiOperation({ summary: 'Mi plan de monitoría en una vigencia (lo crea si no existe)' })
   @ApiQuery({ name: 'vigencia', required: false, example: '2026-1' })
-  findMyPlan(@CurrentUser() user: User, @Query('vigencia') vigencia?: string) {
-    return this.svc.findOrCreateMyPlan(user, vigencia || defaultVigencia());
+  findMyPlan(@CurrentUser() user: User, @Query() query: VigenciaQueryDto) {
+    return this.svc.findOrCreateMyPlan(user, query.vigencia || defaultVigencia());
   }
 
   // ── Firma del enlace ──────────────────────────────────────
@@ -62,9 +62,9 @@ export class MonitorsController {
   findMonitorPlan(
     @Param('monitorId', ParseUUIDPipe) monitorId: string,
     @CurrentUser() user: User,
-    @Query('vigencia') vigencia?: string,
+    @Query() query: VigenciaQueryDto,
   ) {
-    return this.svc.findMonitorPlan(monitorId, vigencia, user);
+    return this.svc.findMonitorPlan(monitorId, query.vigencia, user);
   }
 
   // ── Planes ────────────────────────────────────────────────
