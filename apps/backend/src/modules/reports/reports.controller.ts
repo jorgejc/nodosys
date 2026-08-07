@@ -6,6 +6,7 @@ import {
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
+import { CertificateQueryDto } from '../monitors/dto/monitors.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User, UserRole } from '../users/entities/user.entity';
@@ -183,6 +184,44 @@ export class ReportsController {
     const buffer = await this.svc.generateWorkPlanPdf(id);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="plan-trabajo-${id.slice(0, 8)}.pdf"`);
+    res.send(buffer);
+  }
+
+  // ── Monitorías ────────────────────────────────────────────
+  // El control de acceso (rol permitido + aislamiento por nodo) lo aplica
+  // MonitorsService dentro del servicio, antes de generar el documento.
+
+  @Get('monitors/:planId/excel')
+  @ApiOperation({ summary: 'Plan de trabajo de la monitora en Excel' })
+  async monitorPlanExcel(
+    @Param('planId', ParseUUIDPipe) planId: string,
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.svc.generateMonitorPlanExcel(planId, user);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="plan-monitoria-${planId.slice(0, 8)}.xlsx"`);
+    res.send(buffer);
+  }
+
+  @Get('monitors/:planId/certificado/pdf')
+  @ApiOperation({ summary: 'Certificado de horas ejecutadas en PDF (rango de semanas)' })
+  async monitorCertificatePdf(
+    @Param('planId', ParseUUIDPipe) planId: string,
+    @Query() query: CertificateQueryDto,
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.svc.generateMonitorCertificatePdf(
+      planId,
+      { from: query.from, to: query.to, observaciones: query.observaciones },
+      user,
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="certificado-horas-${planId.slice(0, 8)}.pdf"`,
+    );
     res.send(buffer);
   }
 }

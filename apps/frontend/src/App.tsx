@@ -24,6 +24,8 @@ import SessionDetailPage from '@/pages/actividades/SessionDetailPage';
 import ProcesosPage from '@/pages/procesos/ProcesosPage';
 import ProcesoFormPage from '@/pages/procesos/ProcesoFormPage';
 import ProcesoDetailPage from '@/pages/procesos/ProcesoDetailPage';
+import MonitoriasPage from '@/pages/monitorias/MonitoriasPage';
+import MonitorDetailPage from '@/pages/monitorias/MonitorDetailPage';
 
 // // Por ahora una página temporal de "estamos construyendo"
 // function ComingSoon({ name }: { name: string }) {
@@ -62,6 +64,8 @@ export default function App() {
         <Route path="/procesos/:id/sesiones/nueva"               element={<SessionFormPage />} />
         <Route path="/procesos/:id/sesiones/:sid"                element={<SessionDetailPage />} />
         <Route path="/procesos/:id/sesiones/:sid/editar"         element={<SessionFormPage />} />
+        <Route path="/monitorias"                                element={<MonitoriasPage />} />
+        <Route path="/monitorias/:monitorId"                     element={<MonitorDetailPage />} />
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
