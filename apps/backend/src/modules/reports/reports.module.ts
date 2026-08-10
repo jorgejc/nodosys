@@ -11,6 +11,7 @@ import { MonitorWorkPlan } from '../monitors/entities/monitor-work-plan.entity';
 import { MonitorWeek } from '../monitors/entities/monitor-week.entity';
 import { MonitorWeekActivity } from '../monitors/entities/monitor-week-activity.entity';
 import { MonitorsModule } from '../monitors/monitors.module';
+import { AuxiliaryModule } from '../auxiliary/auxiliary.module';
 import { ReportsService } from './reports.service';
 import { ReportsController } from './reports.controller';
 
@@ -24,6 +25,8 @@ import { ReportsController } from './reports.controller';
     ]),
     // Reusa el control de acceso de monitorías (rol + aislamiento por nodo)
     MonitorsModule,
+    // Ídem para el registro de actividad del auxiliar
+    AuxiliaryModule,
   ],
   providers: [ReportsService],
   controllers: [ReportsController],

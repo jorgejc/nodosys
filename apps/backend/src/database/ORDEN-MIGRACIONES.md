@@ -35,6 +35,8 @@ otra la referencie.
 | 13 | `migration-fase4-actividades.sql` | añade `session_id`, `strategy_id`, `municipality_id`, `resource_detail`, `payment_type`, `has_electronic_invoice_provider` a `activity_requests` | **`strategies` + `municipalities` (11)**, `course_sessions` (10) |
 | 14 | `migration-inventario-ubicacion.sql` | añade `location_type`, `cabinet_number`, `shelf_number`, `location_note` a `inventory_items` | `inventory_items` (1) |
 | 15 | `migration-monitorias.sql` | añade `signature_url` a `users`; crea `monitor_work_plans`, `monitor_weeks`, `monitor_week_activities`, `monitor_evidences`; FK sin cascada destructiva y borrado lógico de evidencias | `users` (1) |
+| 16 | `migration-auxiliar.sql` | catálogos `auxiliary_functions` (10) y `participation_types` (8); crea `auxiliary_daily_logs`, `auxiliary_activity_participations`, `auxiliary_participation_types`, `auxiliary_evidences`; CHECK de invariantes y borrado lógico de evidencias | `users` (1), `activity_requests` (9), `processes` (9) |
+| 17 | `migration-auxiliar-dias.sql` | reestructura a DÍA → ACTIVIDADES: crea `auxiliary_days`, `auxiliary_activities` y sus N:N (`auxiliary_activity_functions`, `auxiliary_activity_types`); añade `activity_id` a `auxiliary_evidences`; migra los datos del modelo anterior sin pérdida | **`migration-auxiliar.sql` (16)** |
 
 `migration-catalogos.sql` no depende de nada, así que su única restricción es
 correr **antes** de las migraciones 12 y 13. Se coloca en el puesto 11 por
@@ -52,7 +54,9 @@ correr, **en este orden**, es:
 2. migration-tipos-proceso.sql
 3. migration-fase4-actividades.sql
 4. migration-inventario-ubicacion.sql
-5. migration-monitorias.sql          ← NUEVA (módulo Monitorías)
+5. migration-monitorias.sql          ← módulo Monitorías (Fase A)
+6. migration-auxiliar.sql            ← registro del auxiliar (Fase B)
+7. migration-auxiliar-dias.sql       ← NUEVA (rediseño a día → actividades)
 ```
 
 > Si `migration-processes.sql` o `migration-sessions.sql` aún no se aplicaron

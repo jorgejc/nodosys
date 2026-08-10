@@ -385,3 +385,101 @@ export interface MonitorHoursRange {
   totalHours: number;
   weeks:      MonitorWeekSummary[];
 }
+
+// ══════════════════════════════════════════════════════════
+// EQUIPO DE NODO · Registro de actividad del AUXILIAR
+// ══════════════════════════════════════════════════════════
+
+
+/** Catálogo: las 10 funciones oficiales del auxiliar. */
+export interface AuxiliaryFunction {
+  id:           string;
+  name:         string;
+  displayOrder: number;
+}
+
+/** Catálogo: en qué consistió el aporte en una actividad del nodo. */
+export interface ParticipationType {
+  id:           string;
+  name:         string;
+  displayOrder: number;
+}
+
+export interface AuxiliaryProfile {
+  id:             string;
+  name:           string;
+  email:          string;
+  documentType:   string | null;
+  documentNumber: string | null;
+  nodoId:         string | null;
+  nodoName:       string | null;
+  phone:          string | null;
+}
+
+export interface AuxiliaryEvidence {
+  id:         string;
+  fileUrl:    string;
+  caption:    string | null;
+  uploadedAt: string;
+}
+
+/**
+ * Una actividad dentro de un día. Unifica lo que antes eran "registro
+ * diario" y "participación": una actividad enganchada es solo una que
+ * además trae activityId/processId.
+ */
+export interface AuxiliaryActivity {
+  id:          string;
+  dayId:       string;
+  description: string;
+  /** null significa "no se registró", no "cero horas". */
+  hours:       number | null;
+  activityId:  string | null;
+  processId:   string | null;
+  /** Nombre del registro del nodo al que se engancha, si lo hay. */
+  linkLabel:   string | null;
+  isLinked:    boolean;
+  functions:   { id: string; name: string }[];
+  types:       { id: string; name: string }[];
+  evidences:   AuxiliaryEvidence[];
+  createdAt:   string;
+}
+
+/** Un día = un bloque. La fecha no se repite por actividad. */
+export interface AuxiliaryDay {
+  id:            string;
+  logDate:       string;
+  nodoId:        string | null;
+  activities:    AuxiliaryActivity[];
+  activityCount: number;
+  totalHours:    number | null;
+  createdAt:     string;
+}
+
+/** Totales del mes completo, aunque la vista esté paginada. */
+export interface AuxiliaryMonthSummary {
+  year:          number;
+  month:         number;
+  daysWithLog:   number;
+  activityCount: number;
+  evidenceCount: number;
+  totalHours:    number | null;
+}
+
+export interface AuxiliaryPagination {
+  page:       number;
+  pageSize:   number;
+  total:      number;
+  totalPages: number;
+}
+
+export interface AuxiliaryDaysPage {
+  auxiliary:  AuxiliaryProfile;
+  year:       number;
+  month:      number;
+  days:       AuxiliaryDay[];
+  pagination: AuxiliaryPagination;
+  /** Nodos donde se hizo el trabajo del período (pueden ser varios). */
+  nodos:      { id: string; name: string | null }[];
+  summary:    AuxiliaryMonthSummary;
+}

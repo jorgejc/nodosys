@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ClipboardList, FileText,
-  Users, LogOut, Menu, X, ChevronRight, Zap, Layers, GraduationCap,
+  Users, LogOut, Menu, X, ChevronRight, Zap, Layers, GraduationCap, NotebookPen,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth.store';
@@ -26,7 +26,7 @@ export default function AppLayout() {
   const { user, logout } = useAuthStore();
   const { canViewInventory, canViewOwnPlan, canViewAllPlans, canViewEnlacePlans,
           canViewReports, canManageUsers, canViewProcesos,
-          canViewActividades, canViewMonitorias } = useAuth();
+          canViewActividades, canViewMonitorias, canViewAuxiliar } = useAuth();
   const [open, setOpen] = useState(true);
 
   const handleLogout = () => {
@@ -47,6 +47,7 @@ export default function AppLayout() {
     { to: '/actividades', icon: Zap, label: 'Actividades', sub: 'Viáticos y solicitudes', show: canViewActividades },
     { to: '/procesos', icon: Layers, label: 'Procesos', sub: 'Cursos, clubes y talleres', show: canViewProcesos },
     { to: '/monitorias', icon: GraduationCap, label: 'Monitorías', sub: 'Planes y certificados', show: canViewMonitorias },
+    { to: '/registro-nodo', icon: NotebookPen, label: 'Registro de actividades', sub: 'Actividad del auxiliar del nodo', show: canViewAuxiliar },
   ].filter(n => n.show);
 
   return (
