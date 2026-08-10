@@ -22,6 +22,7 @@ import { SessionsModule } from './modules/sessions/sessions.module';
 import { ProcessesModule } from './modules/processes/processes.module';
 import { CatalogsModule } from './modules/catalogs/catalogs.module';
 import { MonitorsModule } from './modules/monitors/monitors.module';
+import { AuxiliaryModule } from './modules/auxiliary/auxiliary.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { MonitorsModule } from './modules/monitors/monitors.module';
     ProcessesModule,
     CatalogsModule,
     MonitorsModule,
+    AuxiliaryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -27,6 +27,8 @@ import { WorkPlan, PlanStatus } from '../modules/workplan/entities/work-plan.ent
 import { MonitorWorkPlan } from '../modules/monitors/entities/monitor-work-plan.entity';
 import { MonitorWeek } from '../modules/monitors/entities/monitor-week.entity';
 import { MonitorWeekActivity } from '../modules/monitors/entities/monitor-week-activity.entity';
+import { AuxiliaryDay } from '../modules/auxiliary/entities/auxiliary-day.entity';
+import { AuxiliaryActivity } from '../modules/auxiliary/entities/auxiliary-activity.entity';
 
 // UUIDs fijos de los nodos de prueba (no existen en prod, solo en nodosys_test)
 const NODO_A = 'aaaaaaaa-0000-4000-a000-000000000001';
@@ -44,6 +46,8 @@ describe('Security Suite — Escalada de Privilegios e Aislamiento por Nodo', ()
   let monitorPlanRepo: Repository<MonitorWorkPlan>;
   let monitorWeekRepo: Repository<MonitorWeek>;
   let monitorActivityRepo: Repository<MonitorWeekActivity>;
+  let auxDayRepo: Repository<AuxiliaryDay>;
+  let auxActRepo: Repository<AuxiliaryActivity>;
 
   let users: Record<string, User> = {};
   let tokens: Record<string, string> = {};
@@ -91,6 +95,8 @@ describe('Security Suite — Escalada de Privilegios e Aislamiento por Nodo', ()
     monitorPlanRepo     = mod.get(getRepositoryToken(MonitorWorkPlan));
     monitorWeekRepo     = mod.get(getRepositoryToken(MonitorWeek));
     monitorActivityRepo = mod.get(getRepositoryToken(MonitorWeekActivity));
+    auxDayRepo          = mod.get(getRepositoryToken(AuxiliaryDay));
+    auxActRepo          = mod.get(getRepositoryToken(AuxiliaryActivity));
 
     // Vistas SQL usadas por WorkPlanService.findOne — synchronize:true no las crea
     const ds = mod.get(DataSource);
@@ -175,6 +181,15 @@ describe('Security Suite — Escalada de Privilegios e Aislamiento por Nodo', ()
         name: 'Monitora B', email: 'monitora-b@sec.test',
         nodoId: NODO_B, nodoName: 'Nodo B', documentNumber: '3333',
       }),
+      // ── Auxiliares de nodo (Equipo de Nodo · Fase B) ──
+      mkUser(UserRole.AUXILIAR, {
+        name: 'Auxiliar A', email: 'auxiliar-a@sec.test',
+        nodoId: NODO_A, nodoName: 'Nodo A', documentNumber: '7777',
+      }),
+      mkUser(UserRole.AUXILIAR, {
+        name: 'Auxiliar B', email: 'auxiliar-b@sec.test',
+        nodoId: NODO_B, nodoName: 'Nodo B', documentNumber: '8888',
+      }),
       // Dedicada al caso "le retiran el nodo": se le quita dentro del test,
       // así que no puede ser ninguna de las que usan los demás casos.
       mkUser(UserRole.MONITOR, {
@@ -198,6 +213,8 @@ describe('Security Suite — Escalada de Privilegios e Aislamiento por Nodo', ()
       monitoraA2: byEmail('monitora-a2@sec.test'),
       monitoraB:  byEmail('monitora-b@sec.test'),
       monitoraExnodo: byEmail('monitora-exnodo@sec.test'),
+      auxiliarA:  byEmail('auxiliar-a@sec.test'),
+      auxiliarB:  byEmail('auxiliar-b@sec.test'),
     };
 
     // ── Sembrar inventario ─────────────────────────────────────────
@@ -815,5 +832,552 @@ describe('Security Suite — Escalada de Privilegios e Aislamiento por Nodo', ()
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('application/pdf');
+  });
+
+  // ══════════════════════════════════════════════════════════
+  // REGISTRO DE ACTIVIDADES — activa la ESCRITURA del rol auxiliar
+  // Modelo: un DÍA contiene varias ACTIVIDADES.
+  // ══════════════════════════════════════════════════════════
+
+  /** Ids del catálogo y del día de trabajo, sembrados por los tests 25. */
+  let functionId = '';
+  let functionId2 = '';
+  let typeId = '';
+  let dayIdA = '';
+
+  it('25a. Auxiliar A: lee el catálogo de funciones (10 oficiales)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/auxiliary/functions')
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(10);
+    functionId  = res.body[0].id;
+    functionId2 = res.body[1].id;
+
+    const tipos = await request(app.getHttpServer())
+      .get('/api/auxiliary/participation-types')
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+    expect(tipos.body).toHaveLength(8);
+    typeId = tipos.body[0].id;
+  });
+
+  it('25b. Auxiliar A: abre un día y el nodo sale de SU perfil', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/auxiliary/days')
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+      .send({ logDate: '2026-08-03' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.auxiliaryId).toBe(users.auxiliarA.id);
+    expect(res.body.nodoId).toBe(NODO_A);
+    dayIdA = res.body.id;
+  });
+
+  it('25c. La fecha NO se duplica: reabrir el día devuelve el mismo', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/auxiliary/days')
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+      .send({ logDate: '2026-08-03' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe(dayIdA);
+  });
+
+  it('25d. Auxiliar A: agrega una actividad con VARIAS funciones', async () => {
+    const res = await request(app.getHttpServer())
+      .post(`/api/auxiliary/days/${dayIdA}/activities`)
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+      .send({
+        description: 'Acompañamiento en sala y registro de asistencia',
+        hours: 4,
+        functionIds: [functionId, functionId2],
+        typeIds: [typeId],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.dayId).toBe(dayIdA);
+    expect(res.body.functions).toHaveLength(2);
+    expect(res.body.types).toHaveLength(1);
+  });
+
+  it('25e. Auxiliar A: no puede colar auxiliaryId ni nodoId por el body', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/auxiliary/days')
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+      .send({
+        logDate: '2026-08-09',
+        auxiliaryId: users.auxiliarB.id, nodoId: NODO_B,
+      });
+
+    // El ValidationPipe los rechaza por no estar en el DTO
+    expect(res.status).toBe(400);
+  });
+
+  it('25f. Auxiliar A: rechaza funciones inventadas → 400', async () => {
+    const res = await request(app.getHttpServer())
+      .post(`/api/auxiliary/days/${dayIdA}/activities`)
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+      .send({
+        description: 'Con función falsa', functionIds: [NODO_B],   // uuid válido, no del catálogo
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it.each([
+    ['docente',                'docente'],
+    ['monitor',                'monitoraA1'],
+    ['vicerrector_extension',  'viceExt'],
+    ['decano',                 'decanoA'],
+  ])('25g. %s: GET /auxiliary/functions → 403 (módulo cerrado)',
+    async (_role, tokenKey) => {
+      const res = await request(app.getHttpServer())
+        .get('/api/auxiliary/functions')
+        .set('Authorization', `Bearer ${tokens[tokenKey]}`);
+
+      expect(res.status).toBe(403);
+    });
+
+  it('26a. Enlace A: ve los días del auxiliar de SU nodo → 200', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/auxiliary/${users.auxiliarA.id}/days?year=2026&month=8`)
+      .set('Authorization', `Bearer ${tokens.enlaceA}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.days.length).toBeGreaterThan(0);
+    // Un día = un bloque: la fecha no se repite por actividad
+    expect(res.body.days[0].activities.length).toBeGreaterThan(0);
+  });
+
+  it('26b. Enlace B: NO ve los días del auxiliar del nodo A → 403', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/auxiliary/${users.auxiliarA.id}/days?year=2026&month=8`)
+      .set('Authorization', `Bearer ${tokens.enlaceB}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('26c. Auxiliar B: NO ve los días del auxiliar A → 403', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/auxiliary/${users.auxiliarA.id}/days?year=2026&month=8`)
+      .set('Authorization', `Bearer ${tokens.auxiliarB}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('26d. Auxiliar A: NO lista a sus pares → 403', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/auxiliary')
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('26e. Enlace A: lista solo auxiliares de su nodo', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/auxiliary')
+      .set('Authorization', `Bearer ${tokens.enlaceA}`);
+
+    expect(res.status).toBe(200);
+    const ids = res.body.map((a: { id: string }) => a.id);
+    expect(ids).toContain(users.auxiliarA.id);
+    expect(ids).not.toContain(users.auxiliarB.id);
+  });
+
+  it('26f. Enlace sin nodo: lista vacía, no expone auxiliares ajenos', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/auxiliary')
+      .set('Authorization', `Bearer ${tokens.enlaceNull}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('27a. Enlace A: NO abre días ni escribe actividades de su auxiliar → 403', async () => {
+    // El registro debe reflejar lo que el auxiliar declara
+    const dia = await request(app.getHttpServer())
+      .post('/api/auxiliary/days')
+      .set('Authorization', `Bearer ${tokens.enlaceA}`)
+      .send({ logDate: '2026-08-05' });
+    expect(dia.status).toBe(403);
+
+    const act = await request(app.getHttpServer())
+      .post(`/api/auxiliary/days/${dayIdA}/activities`)
+      .set('Authorization', `Bearer ${tokens.enlaceA}`)
+      .send({ description: 'Escrito por el enlace', functionIds: [functionId] });
+    expect(act.status).toBe(403);
+  });
+
+  it('27b. Admin: tampoco escribe registros de auxiliar → 403', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/auxiliary/days')
+      .set('Authorization', `Bearer ${tokens.admin}`)
+      .send({ logDate: '2026-08-05' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('27c. Auxiliar A: solo ve enganchables de SU nodo', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/auxiliary/linkable')
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('activities');
+    expect(res.body).toHaveProperty('processes');
+  });
+
+  it('28a. Auxiliar A: reporte mensual propio → 200 y es un PDF', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/reports/auxiliary/${users.auxiliarA.id}/mensual/pdf?year=2026&month=8`)
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+      .buffer(true);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+  });
+
+  it('28b. Enlace A: reporte del auxiliar de su nodo → 200', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/reports/auxiliary/${users.auxiliarA.id}/mensual/pdf?year=2026&month=8`)
+      .set('Authorization', `Bearer ${tokens.enlaceA}`)
+      .buffer(true);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('28c. Enlace B: reporte de un auxiliar de OTRO nodo → 403', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/reports/auxiliary/${users.auxiliarA.id}/mensual/pdf?year=2026&month=8`)
+      .set('Authorization', `Bearer ${tokens.enlaceB}`);
+
+    expect(res.status).toBe(403);
+    expect(res.headers['content-type']).not.toContain('application/pdf');
+  });
+
+  it('28d. Docente: reporte de cualquier auxiliar → 403', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/reports/auxiliary/${users.auxiliarA.id}/mensual/pdf?year=2026&month=8`)
+      .set('Authorization', `Bearer ${tokens.docente}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('29. Al auxiliar A le RETIRAN el nodo: deja de poder registrar → 400', async () => {
+    await userRepo.update({ id: users.auxiliarA.id }, { nodoId: null, nodoName: null });
+    try {
+      const escritura = await request(app.getHttpServer())
+        .post('/api/auxiliary/days')
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+        .send({ logDate: '2026-08-20' });
+      expect(escritura.status).toBe(400);
+      expect(JSON.stringify(escritura.body.message)).toContain('nodo');
+
+      const lectura = await request(app.getHttpServer())
+        .get('/api/auxiliary/me/days?year=2026&month=8')
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+      expect(lectura.status).toBe(400);
+    } finally {
+      await userRepo.update(
+        { id: users.auxiliarA.id }, { nodoId: NODO_A, nodoName: 'Nodo A' },
+      );
+    }
+  });
+
+  it('30. Mes A CABALLO entre dos nodos: cada enlace ve solo lo suyo', async () => {
+    // Escenario real: traslado a mitad de período. El auxiliar registra
+    // unos días en el nodo A, lo trasladan al B y sigue registrando allí.
+    const creados: string[] = [];
+    try {
+      // ── Trabajo hecho mientras estaba en el nodo A ──
+      const diaA = await request(app.getHttpServer())
+        .post('/api/auxiliary/days')
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+        .send({ logDate: '2026-09-03' });
+      expect(diaA.status).toBe(201);
+      expect(diaA.body.nodoId).toBe(NODO_A);
+      creados.push(diaA.body.id);
+
+      await request(app.getHttpServer())
+        .post(`/api/auxiliary/days/${diaA.body.id}/activities`)
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+        .send({ description: 'Trabajo en A', hours: 5, functionIds: [functionId] });
+
+      // ── Traslado al nodo B ──
+      await userRepo.update(
+        { id: users.auxiliarA.id }, { nodoId: NODO_B, nodoName: 'Nodo B' },
+      );
+
+      const diaB = await request(app.getHttpServer())
+        .post('/api/auxiliary/days')
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+        .send({ logDate: '2026-09-20' });
+      expect(diaB.status).toBe(201);
+      expect(diaB.body.nodoId).toBe(NODO_B);   // el día nuevo es del nodo nuevo
+      creados.push(diaB.body.id);
+
+      await request(app.getHttpServer())
+        .post(`/api/auxiliary/days/${diaB.body.id}/activities`)
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+        .send({ description: 'Trabajo en B', hours: 6, functionIds: [functionId] });
+
+      // ── El enlace del nodo A conserva SU histórico ──
+      const vistaA = await request(app.getHttpServer())
+        .get(`/api/auxiliary/${users.auxiliarA.id}/days?year=2026&month=9`)
+        .set('Authorization', `Bearer ${tokens.enlaceA}`);
+
+      expect(vistaA.status).toBe(200);
+      expect(vistaA.body.days).toHaveLength(1);
+      expect(vistaA.body.days[0].activities[0].description).toBe('Trabajo en A');
+      expect(vistaA.body.nodos.map((n: { id: string }) => n.id)).toEqual([NODO_A]);
+
+      // ── El enlace del nodo B ve solo lo hecho con él ──
+      const vistaB = await request(app.getHttpServer())
+        .get(`/api/auxiliary/${users.auxiliarA.id}/days?year=2026&month=9`)
+        .set('Authorization', `Bearer ${tokens.enlaceB}`);
+
+      expect(vistaB.status).toBe(200);
+      expect(vistaB.body.days).toHaveLength(1);
+      expect(vistaB.body.days[0].activities[0].description).toBe('Trabajo en B');
+      expect(vistaB.body.nodos.map((n: { id: string }) => n.id)).toEqual([NODO_B]);
+
+      // ── El auxiliar ve su mes entero, de los dos nodos ──
+      const propio = await request(app.getHttpServer())
+        .get('/api/auxiliary/me/days?year=2026&month=9')
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+
+      expect(propio.status).toBe(200);
+      expect(propio.body.days).toHaveLength(2);
+      expect(propio.body.nodos).toHaveLength(2);   // el PDF no afirmará uno solo
+
+      // ── El trasladado sigue en la lista del enlace de A ──
+      const listaA = await request(app.getHttpServer())
+        .get('/api/auxiliary')
+        .set('Authorization', `Bearer ${tokens.enlaceA}`);
+      expect(listaA.body.map((a: { id: string }) => a.id)).toContain(users.auxiliarA.id);
+
+      // ── Y el reporte de cada enlace sale con SU parte ──
+      for (const token of [tokens.enlaceA, tokens.enlaceB]) {
+        const pdf = await request(app.getHttpServer())
+          .get(`/api/reports/auxiliary/${users.auxiliarA.id}/mensual/pdf?year=2026&month=9`)
+          .set('Authorization', `Bearer ${token}`)
+          .buffer(true);
+        expect(pdf.status).toBe(200);
+        expect(pdf.headers['content-type']).toContain('application/pdf');
+      }
+    } finally {
+      await userRepo.update(
+        { id: users.auxiliarA.id }, { nodoId: NODO_A, nodoName: 'Nodo A' },
+      );
+      for (const id of creados) {
+        await auxDayRepo.delete(id);
+      }
+    }
+  });
+
+  it('31. Auxiliar A: no puede registrar más de 24 h en un mismo día → 400', async () => {
+    const dia = await request(app.getHttpServer())
+      .post('/api/auxiliary/days')
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+      .send({ logDate: '2026-08-15' });
+    const dayId = dia.body.id;
+
+    try {
+      for (const horas of [12, 10]) {
+        const r = await request(app.getHttpServer())
+          .post(`/api/auxiliary/days/${dayId}/activities`)
+          .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+          .send({ description: `Jornada de ${horas}h`, hours: horas, functionIds: [functionId] });
+        expect(r.status).toBe(201);
+      }
+
+      // 12 + 10 = 22 h; pedir 3 más dejaría el día en 25 h
+      const excede = await request(app.getHttpServer())
+        .post(`/api/auxiliary/days/${dayId}/activities`)
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+        .send({ description: 'Extra', hours: 3, functionIds: [functionId] });
+
+      expect(excede.status).toBe(400);
+      expect(JSON.stringify(excede.body.message)).toContain('24');
+    } finally {
+      await auxDayRepo.delete(dayId);
+    }
+  });
+
+  it('32. Filtro y paginación sobre los días', async () => {
+    const dias: string[] = [];
+    try {
+      // Tres días con actividades distinguibles
+      for (const [fecha, texto] of [
+        ['2026-10-05', 'Taller de robotica'],
+        ['2026-10-12', 'Gestion documental'],
+        ['2026-10-19', 'Taller de lectura'],
+      ] as const) {
+        const d = await request(app.getHttpServer())
+          .post('/api/auxiliary/days')
+          .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+          .send({ logDate: fecha });
+        dias.push(d.body.id);
+
+        await request(app.getHttpServer())
+          .post(`/api/auxiliary/days/${d.body.id}/activities`)
+          .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+          .send({ description: texto, functionIds: [functionId] });
+      }
+
+      // Sin filtro: los tres
+      const todos = await request(app.getHttpServer())
+        .get('/api/auxiliary/me/days?year=2026&month=10')
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+      expect(todos.body.pagination.total).toBe(3);
+
+      // Búsqueda por lo que se hizo
+      const buscados = await request(app.getHttpServer())
+        .get('/api/auxiliary/me/days?year=2026&month=10&search=taller')
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+      expect(buscados.body.pagination.total).toBe(2);
+
+      // Paginación: 2 por página
+      const p1 = await request(app.getHttpServer())
+        .get('/api/auxiliary/me/days?year=2026&month=10&page=1&pageSize=2')
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+      expect(p1.body.days).toHaveLength(2);
+      expect(p1.body.pagination.totalPages).toBe(2);
+      // El resumen es del MES completo, no de la página
+      expect(p1.body.summary.daysWithLog).toBe(3);
+
+      const p2 = await request(app.getHttpServer())
+        .get('/api/auxiliary/me/days?year=2026&month=10&page=2&pageSize=2')
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+      expect(p2.body.days).toHaveLength(1);
+
+      // Rango de fechas
+      const rango = await request(app.getHttpServer())
+        .get('/api/auxiliary/me/days?year=2026&month=10&from=2026-10-10&to=2026-10-15')
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+      expect(rango.body.pagination.total).toBe(1);
+    } finally {
+      for (const id of dias) await auxDayRepo.delete(id);
+    }
+  });
+
+  it('33. Borrar un día con actividades está bloqueado → 400', async () => {
+    const dia = await request(app.getHttpServer())
+      .post('/api/auxiliary/days')
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+      .send({ logDate: '2026-11-04' });
+    const dayId = dia.body.id;
+
+    try {
+      await request(app.getHttpServer())
+        .post(`/api/auxiliary/days/${dayId}/activities`)
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+        .send({ description: 'Algo que no se puede perder', functionIds: [functionId] });
+
+      const bloqueado = await request(app.getHttpServer())
+        .delete(`/api/auxiliary/days/${dayId}`)
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+      expect(bloqueado.status).toBe(400);
+    } finally {
+      await auxDayRepo.delete(dayId);
+    }
+  });
+  it('34. RÁFAGA concurrente: el tope de 24 h aguanta peticiones simultáneas', async () => {
+    // Sin candado sobre la fila del día, ocho peticiones a la vez leen las
+    // mismas horas "ya registradas", todas se creen por debajo del tope y
+    // entre todas meten 32 h en una jornada. Eso acaba impreso en el PDF
+    // que firma el enlace.
+    const dia = await request(app.getHttpServer())
+      .post('/api/auxiliary/days')
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+      .send({ logDate: '2026-12-07' });
+    const dayId = dia.body.id;
+
+    try {
+      const RAFAGA = 8;
+      const HORAS = 4;   // 8 × 4 = 32 h si no hay serialización
+
+      const respuestas = await Promise.all(
+        Array.from({ length: RAFAGA }, (_, i) =>
+          request(app.getHttpServer())
+            .post(`/api/auxiliary/days/${dayId}/activities`)
+            .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+            .send({
+              description: `Simultánea ${i}`, hours: HORAS, functionIds: [functionId],
+            }),
+        ),
+      );
+
+      const creadas    = respuestas.filter((r) => r.status === 201).length;
+      const rechazadas = respuestas.filter((r) => r.status === 400).length;
+
+      // Lo que de verdad importa: lo que quedó GRABADO en la base
+      const vista = await request(app.getHttpServer())
+        .get('/api/auxiliary/me/days?year=2026&month=12')
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+      const elDia = vista.body.days.find((d: { id: string }) => d.id === dayId);
+
+      expect(elDia.totalHours).toBeLessThanOrEqual(24);
+      expect(creadas).toBe(24 / HORAS);            // exactamente 6 caben
+      expect(creadas + rechazadas).toBe(RAFAGA);   // ninguna dio 500
+    } finally {
+      const acts = await auxActRepo.find({ where: { dayId } });
+      for (const a of acts) await auxActRepo.delete(a.id);
+      await auxDayRepo.delete(dayId);
+    }
+  });
+
+  it('35. TRASLADO: no se puede escribir hacia el nodo anterior', async () => {
+    // Día registrado mientras estaba en el nodo A
+    const dia = await request(app.getHttpServer())
+      .post('/api/auxiliary/days')
+      .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+      .send({ logDate: '2026-12-15' });
+    const dayId = dia.body.id;
+    expect(dia.body.nodoId).toBe(NODO_A);
+
+    try {
+      // Lo trasladan al nodo B
+      await userRepo.update(
+        { id: users.auxiliarA.id }, { nodoId: NODO_B, nodoName: 'Nodo B' },
+      );
+
+      const haciaAtras = await request(app.getHttpServer())
+        .post(`/api/auxiliary/days/${dayId}/activities`)
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+        .send({ description: 'Escrito tras el traslado', functionIds: [functionId] });
+
+      expect(haciaAtras.status).toBe(403);
+      expect(JSON.stringify(haciaAtras.body.message)).toMatch(/nodo actual/i);
+
+      // Y borrar el día viejo tampoco
+      const borrar = await request(app.getHttpServer())
+        .delete(`/api/auxiliary/days/${dayId}`)
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`);
+      expect(borrar.status).toBe(403);
+
+      // En su nodo NUEVO sí puede registrar con normalidad
+      const enElNuevo = await request(app.getHttpServer())
+        .post('/api/auxiliary/days')
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+        .send({ logDate: '2026-12-16' });
+      expect(enElNuevo.status).toBe(201);
+      expect(enElNuevo.body.nodoId).toBe(NODO_B);
+
+      const act = await request(app.getHttpServer())
+        .post(`/api/auxiliary/days/${enElNuevo.body.id}/activities`)
+        .set('Authorization', `Bearer ${tokens.auxiliarA}`)
+        .send({ description: 'En mi nodo actual', functionIds: [functionId] });
+      expect(act.status).toBe(201);
+
+      await auxActRepo.delete(act.body.id);
+      await auxDayRepo.delete(enElNuevo.body.id);
+    } finally {
+      await userRepo.update(
+        { id: users.auxiliarA.id }, { nodoId: NODO_A, nodoName: 'Nodo A' },
+      );
+      await auxDayRepo.delete(dayId);
+    }
   });
 });

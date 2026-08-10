@@ -7,6 +7,7 @@ import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { CertificateQueryDto } from '../monitors/dto/monitors.dto';
+import { MonthQueryDto } from '../auxiliary/dto/auxiliary.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User, UserRole } from '../users/entities/user.entity';
@@ -201,6 +202,31 @@ export class ReportsController {
     const buffer = await this.svc.generateMonitorPlanExcel(planId, user);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="plan-monitoria-${planId.slice(0, 8)}.xlsx"`);
+    res.send(buffer);
+  }
+
+  // ── Auxiliar de nodo ──────────────────────────────────────
+  // Lo generan el propio auxiliar y el enlace de su nodo. El control de
+  // acceso (rol + aislamiento por nodo) lo aplica AuxiliaryService dentro
+  // del servicio, antes de generar el documento.
+
+  @Get('auxiliary/:auxiliaryId/mensual/pdf')
+  @ApiOperation({ summary: 'Reporte mensual de actividades del auxiliar (PDF)' })
+  async auxiliaryMonthlyPdf(
+    @Param('auxiliaryId', ParseUUIDPipe) auxiliaryId: string,
+    @Query() query: MonthQueryDto,
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.svc.generateAuxiliaryMonthlyPdf(
+      auxiliaryId, query.year, query.month, user,
+    );
+    const periodo = `${query.year}-${String(query.month).padStart(2, '0')}`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="reporte-auxiliar-${periodo}.pdf"`,
+    );
     res.send(buffer);
   }
 

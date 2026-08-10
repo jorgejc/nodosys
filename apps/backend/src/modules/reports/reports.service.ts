@@ -23,6 +23,7 @@ import { MonitorWorkPlan } from '../monitors/entities/monitor-work-plan.entity';
 import { MonitorWeek } from '../monitors/entities/monitor-week.entity';
 import { MonitorWeekActivity } from '../monitors/entities/monitor-week-activity.entity';
 import { MonitorsService } from '../monitors/monitors.service';
+import { AuxiliaryService } from '../auxiliary/auxiliary.service';
 import { fetchImageAsDataUri } from './remote-image.util';
 import * as ExcelJS from 'exceljs';
 
@@ -152,6 +153,10 @@ export class ReportsService implements OnModuleInit {
     private readonly monitorWeekRepo: Repository<MonitorWeek>,
     // Dueño del control de acceso de monitorías (rol + aislamiento por nodo)
     private readonly monitorsService: MonitorsService,
+
+    // Ídem para el registro de actividad del auxiliar: el reporte mensual
+    // no decide permisos por su cuenta, los delega en el módulo dueño.
+    private readonly auxiliaryService: AuxiliaryService,
   ) {}
 
   onModuleInit() {
@@ -1588,6 +1593,323 @@ export class ReportsService implements OnModuleInit {
         lbl:     { fontSize: 8, bold: true, color: '#555555', margin: [5, 5] },
         val:     { fontSize: 9.5, color: '#1A1A1A', margin: [5, 5] },
         certLbl: { fontSize: 9, bold: true, color: '#FFFFFF', margin: [6, 5] },
+      },
+      defaultStyle: { font: 'Roboto', color: '#222222' },
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // AUXILIAR DE NODO → REPORTE MENSUAL DE ACTIVIDADES (PDF)
+  // ══════════════════════════════════════════════════════════
+
+  private readonly MESES = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+  ];
+
+  /** 'dd/mm' a partir de un 'YYYY-MM-DD' (las columnas DATE llegan como texto). */
+  private fmtDayMonth(iso: string): string {
+    const [, m, d] = iso.split('-');
+    return m && d ? `${d}/${m}` : iso;
+  }
+
+  /**
+   * Qué nodo va en el encabezado del reporte firmado.
+   *
+   * Sale de los nodos de las FILAS del período, no del perfil del auxiliar.
+   * Si la persona se trasladó a mitad de mes, el perfil diría solo el nodo
+   * nuevo y el documento estaría afirmando que se hizo allí un trabajo que
+   * se hizo en otro sitio. Con varios nodos los nombra todos; sin filas no
+   * afirma nada.
+   *
+   * Pública y pura para poder probarla sin generar un PDF y sin buscar
+   * texto dentro de un binario.
+   */
+  static buildNodoLabel(nodos: { id: string; name: string | null }[]): string {
+    const nombres = nodos.map((n) => n.name?.trim() || 'Nodo sin nombre');
+    if (nombres.length === 0) return '—';
+    if (nombres.length === 1) return nombres[0];
+    return `Varios nodos: ${nombres.join(' · ')}`;
+  }
+
+  /**
+   * Reporte mensual de actividades del auxiliar de nodo.
+   *
+   * Lo generan el propio auxiliar y el enlace de su nodo. El control de
+   * acceso lo aplica AuxiliaryService dentro de findMonth, antes de que se
+   * genere un solo byte del documento.
+   *
+   * El reporte PRESENTA lo registrado: fechas, funciones, descripciones,
+   * evidencias y conteos. No califica el desempeño ni añade juicios; lo que
+   * no está en el registro no aparece aquí.
+   */
+  async generateAuxiliaryMonthlyPdf(
+    auxiliaryId: string,
+    year: number,
+    month: number,
+    user: User,
+  ): Promise<Buffer> {
+    const data = await this.auxiliaryService.findMonth(auxiliaryId, year, month, user);
+    const { auxiliary, days, summary } = data;
+
+    // El nodo del encabezado sale de las FILAS del período, no del perfil:
+    // un traslado a mitad de mes haría que el perfil firmara como propio
+    // trabajo hecho en otro nodo.
+    const nodosDelPeriodo = data.nodos ?? [];
+    const nodoLabel   = ReportsService.buildNodoLabel(nodosDelPeriodo);
+    const variosNodos = nodosDelPeriodo.length > 1;
+    const nombreNodo  = new Map(nodosDelPeriodo.map((n) => [n.id, n.name?.trim() || 'Nodo sin nombre']));
+
+    const periodo = `${this.MESES[month - 1]} de ${year}`;
+    const hoy = new Date().toLocaleDateString('es-CO', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
+
+
+    const content: unknown[] = [
+      {
+        text: 'REPORTE MENSUAL DE ACTIVIDADES',
+        fontSize: 15, bold: true, alignment: 'center',
+        color: '#1A1A1A', margin: [0, 0, 0, 4],
+      },
+      {
+        text: 'Auxiliar de nodo · IU Digital de Antioquia',
+        fontSize: 11, alignment: 'center', color: '#FF6B2B',
+        margin: [0, 0, 0, 12],
+      },
+      {
+        canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1.5, lineColor: '#FF6B2B' }],
+        margin: [0, 0, 0, 14],
+      },
+
+      // ── Datos generales ──
+      {
+        table: {
+          widths: [90, '*', 70, '*'],
+          body: [
+            [
+              { text: 'AUXILIAR', style: 'lbl' }, { text: auxiliary.name ?? '—', style: 'val' },
+              { text: 'PERÍODO', style: 'lbl' },  { text: periodo, style: 'val' },
+            ],
+            [
+              { text: 'DOCUMENTO', style: 'lbl' },
+              {
+                text: auxiliary.documentNumber
+                  ? `${auxiliary.documentType ?? 'CC'} ${auxiliary.documentNumber}`
+                  : '—',
+                style: 'val',
+              },
+              { text: 'NODO', style: 'lbl' },     { text: nodoLabel, style: 'val' },
+            ],
+            [
+              { text: 'GENERADO', style: 'lbl' },
+              { text: hoy, style: 'val', colSpan: 3 }, '', '',
+            ],
+          ],
+        },
+        layout: {
+          fillColor: (r: number) => (r % 2 === 0 ? '#F5F5F5' : '#FFFFFF'),
+          hLineColor: () => '#DDDDDD', vLineColor: () => '#DDDDDD',
+          hLineWidth: () => 0.5, vLineWidth: () => 0.5,
+        },
+        margin: [0, 0, 0, 14],
+      },
+
+      // ── Totales: conteos objetivos, sin valoración ──
+      { text: 'RESUMEN DEL PERÍODO', style: 'section' },
+      {
+        table: {
+          widths: ['*', '*', '*'],
+          body: [
+            [
+              { text: 'DÍAS CON REGISTRO', style: 'sumLbl' },
+              { text: 'ACTIVIDADES', style: 'sumLbl' },
+              { text: 'EVIDENCIAS', style: 'sumLbl' },
+            ],
+            [
+              { text: String(summary.daysWithLog), style: 'sumVal' },
+              { text: String(summary.activityCount), style: 'sumVal' },
+              { text: String(summary.evidenceCount), style: 'sumVal' },
+            ],
+          ],
+        },
+        layout: {
+          fillColor: (r: number) => (r === 0 ? '#1A1A1A' : '#FFFFFF'),
+          hLineColor: () => '#FF6B2B', vLineColor: () => '#FF6B2B',
+          hLineWidth: () => 0.8, vLineWidth: () => 0.8,
+        },
+        margin: [0, 0, 0, 6],
+      },
+      // Las horas solo se muestran si alguien las registró: imprimir "0 h"
+      // sería afirmar algo que el dato no dice.
+      summary.totalHours !== null
+        ? {
+            text: `Horas registradas en el período: ${this.fmtHours(summary.totalHours)}`,
+            fontSize: 9, color: '#555555', margin: [0, 0, 0, 14],
+          }
+        : {
+            text: 'El registro de horas es opcional; en este período no se registraron.',
+            fontSize: 8.5, italics: true, color: '#888888', margin: [0, 0, 0, 14],
+          },
+    ];
+
+    // ── Los días, cada uno con sus actividades ──
+    // El documento sigue la misma unidad que la pantalla: un día, un
+    // bloque. Antes la fecha se repetía en cada fila y un mes activo se
+    // leía como una lista interminable de fechas iguales.
+    content.push({ text: 'ACTIVIDADES POR DÍA', style: 'section' });
+
+    if (days.length === 0) {
+      content.push({
+        text: 'No se registraron actividades en este período.',
+        fontSize: 9.5, italics: true, color: '#888888',
+      });
+    } else {
+      for (const d of days) {
+        const conHoras = d.activities.filter(
+          (a) => a.hours !== null && a.hours !== undefined,
+        );
+        const horasDia = conHoras.length
+          ? Math.round(conHoras.reduce((s, a) => s + Number(a.hours), 0) * 10) / 10
+          : null;
+
+        // Encabezado del día: fecha, nº de actividades y horas si las hay.
+        // Con varios nodos se dice cuál, para que ninguna parte del
+        // documento firmado deje dudas de dónde se hizo cada cosa.
+        const cabecera = [
+          this.fmtDayMonth(d.logDate),
+          `${d.activities.length} actividad(es)`,
+          horasDia !== null ? `${this.fmtHours(horasDia)} h` : null,
+          variosNodos ? (nombreNodo.get(d.nodoId ?? '') ?? 'Nodo no identificado') : null,
+        ].filter(Boolean).join('   ·   ');
+
+        const body: unknown[][] = [[
+          { text: cabecera, colSpan: 3, style: 'dayHead' }, '', '',
+        ]];
+
+        if (d.activities.length === 0) {
+          body.push([
+            {
+              text: 'Día abierto sin actividades registradas.',
+              colSpan: 3, fontSize: 8, italics: true, color: '#999999', margin: [4, 4],
+            }, '', '',
+          ]);
+        }
+
+        for (const a of d.activities) {
+          const funciones = a.functions.length
+            ? a.functions.map((f: { name: string }) => `• ${f.name}`).join('\n')
+            : '—';
+
+          const tipos = a.types.length
+            ? a.types.map((t: { name: string }) => `• ${t.name}`).join('\n')
+            : null;
+
+          const evidencias = a.evidences.length
+            ? a.evidences
+                .map((e: { caption: string | null; fileUrl: string }) =>
+                  e.caption?.trim() || e.fileUrl)
+                .map((t: string) => (t.length > 40 ? `${t.slice(0, 40)}…` : t))
+                .join('\n')
+            : '—';
+
+          body.push([
+            {
+              stack: [
+                { text: a.description, fontSize: 8.5, color: '#1A1A1A' },
+                ...(a.isLinked && a.linkLabel
+                  ? [{
+                      text: `Vinculada a: ${a.linkLabel}`,
+                      fontSize: 7, italics: true, color: '#999999', margin: [0, 2, 0, 0],
+                    }]
+                  : []),
+                ...(tipos
+                  ? [{ text: tipos, fontSize: 7, color: '#777777', margin: [0, 2, 0, 0] }]
+                  : []),
+              ],
+              margin: [4, 3],
+            },
+            { text: funciones, style: 'tdMuted' },
+            {
+              stack: [
+                {
+                  text: a.hours !== null && a.hours !== undefined
+                    ? `${this.fmtHours(Number(a.hours))} h` : '—',
+                  fontSize: 8, color: '#333333',
+                },
+                { text: evidencias, fontSize: 7, color: '#777777', margin: [0, 2, 0, 0] },
+              ],
+              margin: [4, 3],
+            },
+          ]);
+        }
+
+        content.push({
+          table: { headerRows: 1, widths: ['*', 150, 96], body },
+          layout: {
+            fillColor: (r: number) => (r === 0 ? '#1A1A1A' : r % 2 === 0 ? '#FAFAFA' : '#FFFFFF'),
+            hLineColor: () => '#DDDDDD', vLineColor: () => '#DDDDDD',
+            hLineWidth: () => 0.5, vLineWidth: () => 0.5,
+            paddingTop: () => 2, paddingBottom: () => 2,
+          },
+          margin: [0, 0, 0, 8],
+          // Un día no se parte entre dos páginas si cabe entero
+          unbreakable: d.activities.length <= 6,
+        });
+      }
+    }
+    // ── Firmas ──
+    content.push({
+      columns: [
+        {
+          width: '*',
+          stack: [
+            { text: ' ', margin: [0, 0, 0, 44] },
+            { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.8, lineColor: '#1A1A1A' }] },
+            { text: auxiliary.name ?? '—', fontSize: 10, bold: true, margin: [0, 4, 0, 0], color: '#1A1A1A' },
+            { text: 'Auxiliar de nodo', fontSize: 9, color: '#555555' },
+          ],
+        },
+        { width: 20, text: '' },
+        {
+          width: '*',
+          stack: [
+            { text: ' ', margin: [0, 0, 0, 44] },
+            { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.8, lineColor: '#1A1A1A' }] },
+            { text: 'Enlace de nodo', fontSize: 10, bold: true, margin: [0, 4, 0, 0], color: '#1A1A1A' },
+            { text: variosNodos ? nodoLabel : `Nodo ${nodoLabel}`, fontSize: 9, color: '#555555' },
+          ],
+        },
+      ],
+      margin: [0, 26, 0, 0],
+      unbreakable: true,
+    });
+
+    // LETTER vertical: 612pt × 792pt
+    return buildPdf({
+      pageSize: 'LETTER',
+      pageOrientation: 'portrait',
+      pageMargins: [48, this.topMarginPt(612), 48, this.bottomMarginPt(612)],
+      header: this.makePdfHeader() ?? {
+        text: 'IU Digital de Antioquia · Registro de actividad del nodo',
+        fontSize: 8, color: '#555555', margin: [48, 16, 0, 0],
+      },
+      footer: this.makePdfFooter() ?? ((page: number, pages: number) => ({
+        text: `Página ${page} de ${pages}  ·  Reporte mensual de actividades · NodoSys · IU Digital`,
+        fontSize: 7, color: '#555555', alignment: 'center', margin: [0, 8, 0, 0],
+      })),
+      content,
+      styles: {
+        section: { fontSize: 10, bold: true, color: '#FF6B2B', margin: [0, 0, 0, 6] },
+        lbl:     { fontSize: 8, bold: true, color: '#555555', margin: [5, 5] },
+        val:     { fontSize: 9.5, color: '#1A1A1A', margin: [5, 5] },
+        sumLbl:  { fontSize: 8, bold: true, color: '#FFFFFF', alignment: 'center', margin: [4, 5] },
+        sumVal:  { fontSize: 17, bold: true, color: '#FF6B2B', alignment: 'center', margin: [4, 6] },
+        th:      { fontSize: 8, bold: true, color: '#FFFFFF', margin: [3, 3] },
+        td:      { fontSize: 8.5, color: '#1A1A1A', margin: [3, 3] },
+        tdMono:  { fontSize: 8, color: '#333333', margin: [3, 3] },
+        tdMuted: { fontSize: 7.5, color: '#666666', margin: [3, 3] },
+        dayHead: { fontSize: 9, bold: true, color: '#FFFFFF', margin: [4, 5] },
       },
       defaultStyle: { font: 'Roboto', color: '#222222' },
     });

@@ -19,6 +19,7 @@
  *  docente                → solo su plan de trabajo
  *  monitor / auxiliar     → inventario (lectura)
  *  monitor                → además, su propio plan de monitoría (horas y evidencias)
+ *  auxiliar               → además, su registro de actividades del nodo
  */
 import { useAuthStore } from '@/stores/auth.store';
 import type { UserRole } from '@/types';
@@ -77,6 +78,16 @@ export function useAuth() {
   const canManageMonitorias  = hasRole('enlace','admin');    // el enlace ve las de su nodo
   const canSignCertificates  = hasRole('enlace','admin');    // firma y certifica
 
+  // ── Registro de actividades del nodo (auxiliar) ────────
+  // El registro del auxiliar es operativo del nodo, igual que monitorías:
+  // las vicerrectorías no entran.
+  const canViewAuxiliar     = hasRole('auxiliar','enlace','admin');
+  // Solo el auxiliar escribe su registro. El admin NO: los endpoints toman
+  // el auxiliaryId del usuario autenticado, así que escribir como admin
+  // crearía filas a su nombre que nadie podría leer.
+  const canEditOwnAuxiliar  = hasRole('auxiliar');
+  const canReviewAuxiliar   = hasRole('enlace','admin');     // consulta y reporta
+
   // ── Usuarios ───────────────────────────────────────────
   const canManageUsers = hasRole('admin');
   const canCreateUsers = hasRole('admin');
@@ -102,6 +113,8 @@ export function useAuth() {
     canViewProcesos, canCreateProceso,
     // Monitorías
     canViewMonitorias, canEditOwnMonitoria, canManageMonitorias, canSignCertificates,
+    // Registro del auxiliar
+    canViewAuxiliar, canEditOwnAuxiliar, canReviewAuxiliar,
     // Usuarios
     canManageUsers, canCreateUsers, canAssignRoles,
     // Reportes
